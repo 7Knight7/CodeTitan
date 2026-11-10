@@ -564,3 +564,67 @@ def test_brand_kit_topics_from_pdf():
     from _lbc.brandapply import build_workspace
     meta = build_workspace({"brand_name": {"text": "Sunrise"}, "keywords": [{"text": " Maths "}, {"text": "maths"}, {"text": "#Tuition"}]})[0]
     assert meta["keywords"] == ["maths", "#tuition"]
+
+
+def test_brand_memory_learns_from_posts_and_never_changes_the_kit():
+    get_store().reset()
+    c = client("Creator")
+    kit_before = {k: get_store().list(k) for k in ("rule", "fact", "guideline")}
+    meta_before = get_store().get("meta", "workspace")
+    on = {"kind": "image", "file_name": "on.jpg", "text": "Northstar Civils Academy UPSC prelims", "alt_text": "Poster",
+          "brand_share": 0.6, "width": 1080, "height": 1080}
+    texts = ["Northstar Civils Academy weekend essay workshop for UPSC aspirants. Seats limited.",
+             "Northstar Civils Academy essay workshop returns this weekend for UPSC aspirants.",
+             "Join the Northstar Civils Academy essay workshop: practise answers with mentors."]
+    reviewer = TestClient(index.app, headers=H)
+    reviewer.post("/api/login", json={"password": TEST_PW, "role": "Reviewer"})
+    for i, t in enumerate(texts):
+        d = post(c, "instagram", "feed", content=t, images=[on], title=f"Workshop {i}").json()
+        assert c.post(f"/api/drafts/{d['id']}/submit").status_code == 200, d["findings"]
+        if i == 0:
+            assert reviewer.post(f"/api/drafts/{d['id']}/review", json={"action": "request_changes",
+                                 "comment": "Mention the batch start date"}).status_code == 200
+            assert c.post(f"/api/drafts/{d['id']}/submit").status_code == 200
+        assert reviewer.post(f"/api/drafts/{d['id']}/review", json={"action": "approve"}).status_code == 200
+    m = reviewer.get("/api/memory").json()["memory"]
+    assert m["approved_posts"] == 3 and m["style"] is not None
+    assert "workshop" in [t["text"] for t in m["topics"]] and "essay" in [t["text"] for t in m["topics"]]
+    assert m["feedback"][0]["text"] == "Mention the batch start date"
+    # the brand kit itself is untouched
+    assert {k: get_store().list(k) for k in ("rule", "fact", "guideline")} == kit_before
+    assert get_store().get("meta", "workspace") == meta_before
+
+    # house style: far more '!' than any approved post -> a suggestion with a memory source, never a blocker
+    loud = c.post("/api/check", json={"platform": "instagram", "format": "feed", "content":
+                  "Northstar Civils Academy essay workshop!!! Join now!!!", "images": [on]}).json()
+    st = [f for f in loud["findings"] if f["rule_id"] == "MEM-STYLE"]
+    assert st and all(f["severity"] == "suggestion" and "Brand memory" in f["sources"][0] for f in st)
+
+    # mistakes fixed before are remembered
+    for _ in range(2):
+        d = post(c, "instagram", "feed", content="Northstar Civils Academy essay workshop, slang: cracked it", images=[on]).json()
+        f = next(x for x in d["findings"] if x["rule_id"] == "R5")
+        c.post(f"/api/drafts/{d['id']}/decisions", json={"finding_id": f["id"], "action": "accept"})
+    again = c.post("/api/check", json={"content": "Our students cracked it"}).json()
+    assert next(x for x in again["findings"] if x["rule_id"] == "R5")["seen_before"] == 2
+
+    # only the marketing head can make it forget a topic
+    assert reviewer.post("/api/memory/forget", json={"topic": "workshop"}).status_code == 403
+    as_role(reviewer, "Marketing head")
+    left = reviewer.post("/api/memory/forget", json={"topic": "workshop"}).json()
+    assert "workshop" not in [t["text"] for t in left["topics"]] and "workshop" in left["forgotten"]
+
+
+def test_pdf_reader_finds_tone_positioning_and_banned_words():
+    from _lbc import brandkit
+    page = ("BRAND TOOLKIT\nACME PAYMENTS \u2013 India Region Guidelines\n5. Words We Don't Use:\n"
+            "\"Instant transfer\" (Instead use: \"In minutes\")\n\"Cheap\" (Instead use: \"Transparent fees\")\n"
+            "6. Fees and Offers\nUse only approved metrics.\n"
+            "Overall Tone: Trusted, global and secure. We connect families and enable global opportunities.\n"
+            "Sensitive Topic \u2014 Security & Fraud: Never make light of scams.\n")
+    kit = brandkit.pattern_read([page])
+    assert kit["brand_name"]["text"] == "Acme Payments"
+    assert [b["text"] for b in kit["banned_phrases"]] == ["Instant transfer", "Cheap"]
+    assert kit["tone_rules"][0]["text"] == "Trusted, global and secure."
+    assert any(g["section"] == "Positioning" and g["text"].startswith("We connect families") for g in kit["guidelines"])
+    assert {"security", "fraud"} <= {t["text"] for t in kit["sensitive_topics"]}

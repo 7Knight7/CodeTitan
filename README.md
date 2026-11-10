@@ -1,71 +1,76 @@
 # Live Brand Check
 
-Pre-publication brand and ad-claim checker for Indian marketing teams. A creator pastes a post (and optionally a banner), the system checks it against the organisation's brand guidelines, approved facts and Indian advertising rules, explains every issue with its source, suggests a fix, and a human reviewer makes the final decision. Every action is recorded.
+Pre-publication brand and ad-claim checker for Indian marketing teams. The marketing head uploads the brand's guideline PDF once; creators then upload post images (and an optional caption) for any platform. The system checks each post against the brand kit, approved facts and Indian advertising rules, says plainly when a post doesn't belong to the brand at all, explains every issue with its source, suggests a fix, and a human reviewer makes the final decision. Every action is recorded, and the app learns from approved posts and reviews without ever changing the brand kit.
 
 Team RaaGa: B.V. Sri Gautam and K. Sai Rajasree.
 
 ## Try it (judges)
 
-0. Sign in with the password given in our submission form, and choose who you are (you can switch later from the header).
-1. A sample post for a fictional coaching institute is already loaded. Press **Check post**.
-2. Each issue is underlined in the post and listed on the right with why, the source (brand guideline, approved fact or regulation) and a suggested fix. **Accept fix**, **Edit**, or **Keep original** with a reason.
-3. When no blockers remain, press **Send for review**.
-4. In the header, switch **Acting as** to *Arjun (brand reviewer)*, open **Review**, and approve or request changes.
-5. Open **History** to see every version and decision, **Brand workspace** to change a fee or rule (the next check uses it), and **Insights** for repeated mistakes and rules people keep overriding.
+Demo access needs no password: choose who you are on the sign-in page (you can switch later from the header).
 
-The sample "Diwali greeting" in Review shows sensitive-topic routing: only *Meera (marketing head)* can approve it.
+1. **Meera (marketing head) → Brand workspace.** Upload a brand guideline PDF (a fictional sample is in `tests/fixtures/sunrise_brand_book.pdf`). Check what was read (name, colours, banned words, tone, positioning, required text, facts with dates, what the brand talks about), edit anything, then activate it.
+2. **Priya (social media) → Write and check.** Pick the platform, format and context (organic, sponsored, paid partnership, influencer, promotional offer), upload up to 5 images and add a caption, then press **Check post**.
+3. If the post doesn't match the brand (wrong name, off-brand colours, another brand's name, unrelated topics, unapproved offers), a big red **"NO: this is not a post for {brand}"** banner explains why. Other issues are listed by layer with why, the source and a suggested fix: **Accept**, **Edit**, or **Keep original** with a reason.
+4. When no blockers remain, press **Send for review**.
+5. Switch to **Arjun (brand reviewer) → Review** and approve or request changes. Priya sees change requests in a note on every page.
+6. Open **History**, **Insights** and **Analytics**, and the **Brand memory** section of Brand workspace to see what the app has learned.
 
-All data is fictional demo data. **Brand workspace → Reset demo data** restores the starting state.
+Posts on sensitive topics can only be approved by Meera. Nobody can approve their own post. Demo data is fictional.
 
 ## How it works
 
-- **Rule engine** (`api/_lbc/engine.py`): exact, explainable rules from the brand guide and Indian regulations: CCPA Guidelines for Prevention of Misleading Advertisement in Coaching Sector 2024 (no "100% selection" claims; disclose course, duration and paid/free for result claims), ASCI Code Chapter I (substantiation), ASCI influencer disclosure, Drugs and Magic Remedies Act, plus brand tone, terminology and sensitive-topic routing.
-- **Fact checks**: fees, offers and result claims in the text are compared with the approved-facts table, including validity dates. Outcomes: matches approved fact, outdated fact, evidence conflict, or couldn't verify.
-- **Banner checks** (`lib/banner.js`): OCR with tesseract.js in the browser (only a small 480 px preview is saved for the reviewer), lowest text contrast against WCAG 4.5:1, main colours against the brand palette, alt text. The text read from the banner goes through the same rule and fact checks.
-- **Workflow** (`api/index.py`): drafts, versions, creator decisions (rejecting a flag needs a reason), submission blocked while blockers are open, reviewer approve / request changes, sensitive posts need the marketing head, append-only audit events.
-- **Insights**: rules fired per post, fixes accepted, overrides with reasons, and rules overridden in at least 40% of posts flagged for investigation.
+- **Brand kit from a PDF** (`api/_lbc/brandkit.py`, `brandapply.py`): a pattern reader (always on, no AI) reads colours, fonts, logo rule, required text, banned words, tone, positioning, sensitive topics, fees and offers with dates, and the brand's topics. An optional AI reader (only when `ANTHROPIC_API_KEY` is set) adds more, such as wrong versions of the brand name, but every AI item must quote the PDF. A person reviews everything before it goes live. Indian ad regulations always stay on.
+- **Brand kit lifecycle**: one brand at a time. Update the live kit (preview of changes, then apply; open posts are re-checked) or reset it for a different brand (earlier posts stay as read-only history, grouped by brand).
+- **Platform Intelligence Engine** (`api/_lbc/platforms.py`): per platform, format and context, the fields to show and the checks to run in five layers: platform limits (only documented ones, with source), Indian ad regulations, brand governance, approved facts, visuals.
+- **Rule engine and fact checks** (`api/_lbc/engine.py`): exact, explainable rules (CCPA coaching-sector guidelines 2024, ASCI Code, ASCI influencer disclosure, Drugs and Magic Remedies Act, plus the brand kit's words and names). Fees, offers and results are compared with approved facts and their validity dates.
+- **Image checks** (`lib/image.js`, in the browser): OCR with tesseract.js, text contrast against WCAG 4.5:1, palette and share of brand colours, logo match. Only the read text, measurements and a 480 px preview leave the browser.
+- **Brand fit** (`api/_lbc/brandfit.py`): combines brand name, logo, brand colours, other brands' names, the brand's topics and unapproved offers into one answer: fits, partly on brand, or "not a post for this brand" (a blocker). Every reason cites its source.
+- **Brand memory** (`api/_lbc/memory.py`): learns from approved posts (topics, house style), reviewer change requests, fixes creators accept (repeat mistakes) and overrides with reasons (accepted exceptions). It only adds topics and suggestions, never blockers, and never changes the brand kit. The marketing head can make it forget a topic.
+- **Workflow** (`api/index.py`): drafts with versions, creator decisions (keeping flagged text needs a reason), sending blocked while blockers are open, reviewer approve / request changes, sensitive posts need the marketing head, append-only audit events.
+- **Insights and Analytics**: repeat issues, rules overridden in at least 40% of posts, blockers, warnings, suggestions and checks passed, for the current brand kit or all history by brand.
 
 ## Stack
 
-Next.js 14 + Tailwind CSS (frontend), FastAPI on Python (API, deployed as a Vercel Python function), Supabase Postgres (storage), tesseract.js (in-browser OCR). No AI service is used in this version.
+Next.js 14 + Tailwind CSS (frontend), FastAPI on Python (API, deployed as a Vercel Python function), Supabase Postgres (storage), tesseract.js (in-browser OCR). Post checks use no AI; the only optional AI use is reading the brand guideline PDF.
 
 ## Run locally
 
 ```bash
 npm install
 pip install -r requirements.txt uvicorn
-export LBC_PASSWORD_HASH="$(python api/_lbc/auth.py 'your-password')"
 npm run api      # FastAPI on :8000 (stores data in /tmp/lbc-data.json)
 npm run dev      # Next.js on :3000, proxies /api to :8000
 python -m pytest -q tests
 ```
+
+Run only one `npm run dev` per folder; two dev servers sharing `.next` break the pages. To turn the password back on, set `LBC_REQUIRE_PASSWORD=1` and `LBC_PASSWORD_HASH="$(python api/_lbc/auth.py 'your-password')"`.
 
 ## Deploy (Vercel + Supabase)
 
 1. Create a Supabase project and run `supabase.sql` in its SQL editor.
 2. Import this repository into Vercel (framework: Next.js).
 3. Environment variables (Vercel → Project → Settings → Environment Variables). Never commit these:
-   - `LBC_PASSWORD_HASH`: run `python api/_lbc/auth.py 'your-password'` and paste the output. The password itself is never stored.
    - `LBC_SESSION_SECRET`: a long random string, for example the output of `python -c "import secrets; print(secrets.token_hex(32))"`.
    - `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (Project settings → API). Required: without them each serverless instance keeps its own temporary data.
+   - Optional: `LBC_REQUIRE_PASSWORD=1` with `LBC_PASSWORD_HASH` (password sign-in), `ANTHROPIC_API_KEY` (AI reader for brand PDFs).
 4. Deploy. The first request seeds the demo workspace.
 
 ## Security
 
-See ARCHITECTURE.md for the full design: hashed password, signed HttpOnly session cookie, server-enforced roles (no self-approval), CSRF header, input limits, security headers, and a database reachable only from the server.
+See ARCHITECTURE.md: signed HttpOnly session cookie, server-enforced roles (no self-approval), optional hashed password, CSRF header, input limits, security headers, and a database reachable only from the server. The judges' demo runs without a password; turn it back on before any real use.
 
 ## Disclosures
 
-- Demo data (Northstar Civils Academy, students, fees) is fictional.
-- Open-source libraries: Next.js, React, Tailwind CSS, FastAPI, httpx, tesseract.js.
-- External services: Supabase (storage), jsDelivr/tessdata CDN (OCR engine and language data loaded by the browser).
+- Demo data (Northstar Civils Academy, Sunrise Tutorials, students, fees) is fictional.
+- Open-source libraries: Next.js, React, Tailwind CSS, FastAPI, pypdf, httpx, tesseract.js.
+- External services: Supabase (storage), jsDelivr/tessdata CDN (OCR engine and language data loaded by the browser), Anthropic API (only if `ANTHROPIC_API_KEY` is set, for reading brand PDFs).
 - AI assistance in building the project: see SUBMISSION.md.
 
 ## Future scope
 
 Planned for the final round:
 - **AI tone and messaging check**: retrieves the most relevant brand guidelines, masks emails, phone numbers and confidential names before any text leaves the server, and shows a finding only if it quotes the post and cites a real guideline.
-- **Browser plugin for real-time checking**: a Chrome extension that checks captions as you type them on Instagram and Facebook, Grammarly-style, and checks images and banners as you attach them.
+- **Browser plugin for real-time checking**: a Chrome extension that checks captions as you type them on Instagram and Facebook and checks images as you attach them.
 - **Evidence-bound approvals and trusted history**: approvals reopen when a fact they relied on changes; side-by-side comparison of versions; a tamper-proof, hash-linked audit log; and a downloadable PDF approval record.
 
-Later: guideline compiler (brand PDF to rules), measured accuracy on a labelled test set, sign-in with real accounts, DOCX and PDF input, logo matching, Hindi and Telugu.
+Later: measured accuracy on a labelled test set, sign-in with real accounts, industry-specific regulation packs, Hindi and Telugu.

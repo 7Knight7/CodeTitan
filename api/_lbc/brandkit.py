@@ -68,7 +68,8 @@ def _join_wrapped(page):
         line = _clean(raw)
         if not line:
             continue
-        if out and not re.search(r"[.:!?\u201d\"]$", out[-1]) and re.match(r"[a-z0-9\"\u201c(]", line) and len(out[-1]) > 40:
+        new_item = re.match(r"\d+\.\s+[A-Z]|[\"\u201c]", line)  # a numbered heading or a quoted list item starts afresh
+        if out and not new_item and not re.search(r"[.:!?\u201d\"]$", out[-1]) and re.match(r"[a-z0-9(]", line) and len(out[-1]) > 40:
             out[-1] = out[-1] + " " + line
         else:
             out.append(line)
@@ -101,6 +102,8 @@ def pattern_read(pages):
                 kit["logo_required"] = {"value": True, **src}
             elif MUST_RE.search(line):
                 kit["required_text"].append({"text": line[:200], **src})
+            if re.match(r"\d+\.\s+[A-Z]", line):  # the next numbered section ends a "don't use" list
+                under_negative = False
             if NEG_HEAD.search(line) and len(line) < 60 and line.endswith(":"):
                 under_negative = True
                 continue
@@ -108,20 +111,64 @@ def pattern_read(pages):
             if NEG_HEAD.search(line):
                 for q in quoted:
                     kit["banned_phrases"].append({"text": q, **src})
+            elif under_negative and quoted and re.match(r"[\"“']", line):
+                # a list item under "Words we don't use:" that starts with the word, then explains it
+                kit["banned_phrases"].append({"text": quoted[0], **src})
             elif under_negative and len(line) <= 60 and not line.endswith(":"):
                 kit["banned_phrases"].append({"text": line.strip("\"'\u201c\u201d."), **src})
             elif line.endswith(":") or (i and len(line) > 80):
                 under_negative = False
+            read_voice(kit, line, src)
             low = line.lower()
             for w in SENSITIVE:
                 if re.search(rf"\b{w}s?\b", low) and "sensitive" in low and not any(x["text"] == w for x in kit["sensitive_topics"]):
                     kit["sensitive_topics"].append({"text": w, **src})
     kit["keywords"] = read_keywords(pages)
-    first = next((ln for ln in (_clean(x) for x in pages[0].splitlines()) if 3 < len(ln) < 60), "")
-    if first:
-        kit["brand_name"] = {"text": re.sub(r"(?i)\b(brand (guidelines|book|kit|manual)|style guide)\b", "", first).strip(" :-–|") or first,
-                             "quote": first, "page": 1, "reader": "pattern"}
+    kit["brand_name"] = read_brand_name(pages[0])
     return kit
+
+
+TITLE_WORDS = re.compile(r"(?i)\b(brand\s+)?(guidelines?|guide|book|toolkit|tool\s*kit|kit|manual|identity|style\s+guide|"
+                         r"handbook|standards)\b")
+TONE_RE = re.compile(r"(?i)^(?:overall\s+|brand\s+)?(?:tone(?:\s+of\s+voice)?|voice|personality)(?:\s+rules?)?\s*:\s*(.{8,})")
+POSITION_RE = re.compile(r"(?i)\b(we (?:connect|help|enable|believe|exist|empower|make|bring|stand)|"
+                         r"our (?:mission|promise|purpose|vision|positioning)|brand (?:promise|positioning)|positioned as)\b")
+SENSITIVE_HEAD = re.compile(r"(?i)^sensitive topics?\s*[—–:-]+\s*([^:]{3,60}):\s*(.+)")
+
+
+def read_brand_name(page):
+    """The brand name from the first lines, without words like 'Brand Toolkit' or 'India Region Guidelines'."""
+    for raw in page.splitlines()[:6]:
+        line = _clean(raw)
+        if not 2 < len(line) < 80:
+            continue
+        name = re.split(r"\s[–—|-]\s|�|:", TITLE_WORDS.sub("", line))[0]
+        name = re.sub(r"\s+", " ", name).strip(" :-–|")
+        if len(name) >= 2:
+            return {"text": name.title() if name.isupper() else name, "quote": line, "page": 1, "reader": "pattern"}
+    return None
+
+
+def read_voice(kit, line, src):
+    """Tone of voice, positioning statements and named sensitive topics. No AI; each item keeps its line."""
+    m = TONE_RE.match(line)
+    if m:
+        first = re.split(r"(?<=\.)\s", m.group(1).strip())[0]
+        if not any(t["text"] == first for t in kit["tone_rules"]):
+            kit["tone_rules"].append({"text": first[:200], **src})
+    for sentence in re.split(r"(?<=[.!?])\s+", line):
+        if POSITION_RE.search(sentence) and 15 < len(sentence) < 220 and not sentence.endswith(":"):
+            tone = TONE_RE.match(sentence)
+            text = (tone.group(1) if tone else sentence).strip()
+            if not any(g["text"] == text for g in kit["guidelines"]):
+                kit["guidelines"].append({"section": "Positioning", "text": text, **src})
+    m = SENSITIVE_HEAD.match(line)
+    if m:
+        kit["guidelines"].append({"section": f"Sensitive topic: {m.group(1).strip()}", "text": m.group(2).strip()[:300], **src})
+        for w in re.split(r"\s*(?:&|,|/|\band\b)\s*", m.group(1).lower()):
+            w = w.strip()
+            if 3 <= len(w) <= 30 and not any(x["text"] == w for x in kit["sensitive_topics"]):
+                kit["sensitive_topics"].append({"text": w, **src})
 
 
 STOP = set("""a about above after again all also an and any are as at be because been before being below between both

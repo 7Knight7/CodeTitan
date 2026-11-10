@@ -8,6 +8,7 @@ import ProofText, { keyOf } from "@/components/ProofText";
 import IssueCard from "@/components/IssueCard";
 import PostPreview from "@/components/PostPreview";
 import BrandFitBanner from "@/components/BrandFitBanner";
+import { MemoryTips } from "@/components/BrandMemory";
 
 const MAX_MEDIA = 10;
 const LEGACY = { // posts saved before platforms existed
@@ -396,6 +397,7 @@ function WritePage() {
       </section>
 
       <aside className="space-y-4 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
+        {!notCreator && !noKit && <MemoryTips />}
         {!result ? (
           <div className="panel p-5 text-sm text-muted">
             <p className="font-medium text-ink">Issues will appear here.</p>

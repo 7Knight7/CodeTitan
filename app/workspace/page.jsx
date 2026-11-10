@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { api, draftsChanged, when } from "@/lib/api";
+import BrandMemory from "@/components/BrandMemory";
 
 const LISTS = [
   ["banned_phrases", "Words and claims not to use", "text"],
@@ -329,6 +330,8 @@ export default function WorkspacePage() {
           <ul className="mt-1 space-y-1 text-sm">{ws.guidelines.map((g) => <li key={g.id}><span className="font-medium">{g.section}:</span> <span className="text-muted">{g.text}</span></li>)}</ul>
         </section>
       )}
+
+      {!ws.empty && <BrandMemory canEdit={canEdit} />}
 
       <section className="panel p-5 text-sm">
         <h2 className="text-lg font-semibold">Privacy</h2>
