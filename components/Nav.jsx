@@ -100,7 +100,7 @@ function SidebarBody({ path, person, workspace, collapsed, onToggle, onNavigate,
           <p className="mt-0.5 truncate text-sm font-medium text-white">{workspace?.name || "…"}</p>
           <p className="mt-1 flex items-center gap-1.5 text-2xs text-white/55">
             <span className={`dot ${workspace?.empty ? "bg-warning-vivid" : "bg-teal"}`} aria-hidden />
-            {workspace ? (workspace.empty ? "No brand kit live" : workspace.live ? "Brand kit live" : "Demo brand kit") : "Loading"}
+            {workspace ? (workspace.empty ? "No brand kit live" : workspace.live ? "Brand kit live" : "Sample brand kit ready") : "Loading"}
           </p>
         </div>
       )}

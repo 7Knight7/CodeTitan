@@ -41,6 +41,21 @@ export default function WorkspacePage() {
   }, []);
   useEffect(() => { load().catch((e) => setError(e.message)); }, [load]);
 
+  // Links such as /workspace#facts point at sections that only exist once the data has loaded.
+  const loaded = !!ws;
+  useEffect(() => {
+    if (!loaded || !window.location.hash) return;
+    const t = setTimeout(() => document.getElementById(window.location.hash.slice(1))?.scrollIntoView({ block: "start" }), 60);
+    return () => clearTimeout(t);
+  }, [loaded]);
+
+  // After a PDF is read, bring the review editor into view so it is obvious what to do next.
+  useEffect(() => {
+    if (!fileName || !kit) return;
+    const t = setTimeout(() => document.getElementById("kit-review")?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
+    return () => clearTimeout(t);
+  }, [fileName]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const clear = () => { setError(""); setNotice(""); };
 
   async function uploadPdf(file) {
@@ -109,7 +124,18 @@ export default function WorkspacePage() {
 
   async function loadDemo() {
     clear(); setDialog(null);
-    try { await api("/reset", { method: "POST" }); setKit(null); setMode("view"); await load(); draftsChanged(); setNotice("Demo brand loaded."); } catch (e) { setError(e.message); }
+    try { await api("/reset", { method: "POST" }); setKit(null); setMode("view"); await load(); draftsChanged(); setNotice("Demo brand restored. Everything is back to how it was at the start."); } catch (e) { setError(e.message); }
+  }
+
+  // One click for the demo: read the bundled sample brand-kit PDF through the normal upload.
+  async function readSamplePdf() {
+    clear();
+    try {
+      const r = await fetch("/samples/sunrise-brand-kit.pdf");
+      if (!r.ok) throw new Error();
+      const b = await r.blob();
+      await uploadPdf(new File([b], "sunrise-brand-kit.pdf", { type: "application/pdf" }));
+    } catch { setError("The sample PDF could not be loaded. Upload your own brand kit PDF instead."); }
   }
 
   if (!ws) return error ? <Notice tone="error" role="alert">{error}</Notice> : <div className="space-y-4"><div className="skeleton h-8 w-56" /><div className="skeleton h-28 w-full" /><div className="skeleton h-48 w-full" /></div>;
@@ -130,6 +156,7 @@ export default function WorkspacePage() {
           <>
             <button className="btn btn-primary" disabled={!!busy} onClick={startUpdate}>Update brand kit</button>
             <button className="btn btn-danger" disabled={!!busy} onClick={() => setDialog({ kind: "reset" })}><WarningIcon /> Reset brand kit</button>
+            <button className="btn btn-ghost" disabled={!!busy} onClick={() => setDialog({ kind: "demo" })}><Icon name="refresh" className="h-4 w-4" />Restore the demo brand</button>
           </>
         )} />
       {!canEdit && <Notice tone="info"><Icon name="lock" className="mr-1 inline h-3.5 w-3.5 align-[-2px]" /> Read only. Only the marketing head can upload, update or reset the brand kit; switch to Meera from the account menu.</Notice>}
@@ -145,12 +172,12 @@ export default function WorkspacePage() {
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-lg font-semibold tracking-tight">{ws.meta.name}</h2>
-              <span className={`chip ${ws.empty ? "text-warning" : "text-teal-dark"}`}><span className={`dot ${ws.empty ? "bg-warning-vivid" : "bg-teal"}`} />{ws.empty ? "No kit live" : ws.live ? "Live" : "Demo kit"}</span>
+              <span className={`chip ${ws.empty ? "text-warning" : "text-teal-dark"}`}><span className={`dot ${ws.empty ? "bg-warning-vivid" : "bg-teal"}`} />{ws.empty ? "No kit live" : ws.live ? "Live" : "Ready to use"}</span>
             </div>
             <p className="mt-1 text-sm text-muted">
               {ws.live
                 ? <>From {ws.meta.kit_file || "the uploaded PDF"}, revision {ws.meta.revision || 1}, activated {when(ws.meta.activated_at)}{ws.meta.updated_at && ws.meta.updated_at !== ws.meta.activated_at ? `, last updated ${when(ws.meta.updated_at)}` : ""}</>
-                : ws.empty ? "Upload a brand kit to start checking posts." : "Fictional demo workspace."}
+                : ws.empty ? "Upload a brand kit to start checking posts." : "Sample brand kit, already loaded: every check uses these rules, facts and guidelines. Nothing to import. All data is fictional."}
             </p>
           </div>
           <dl className="flex gap-6 text-sm">
@@ -174,11 +201,24 @@ export default function WorkspacePage() {
       )}
 
       {canEdit && (!ws.live || mode === "update") && (
-        <Card title={mode === "update" ? "Upload a revised PDF (optional)" : "Upload the brand kit"}
-          sub={mode === "update" ? "Use this when the brand published a new version of its guidelines. It replaces the editor below; you can also just edit the live kit there." : "The app reads the PDF, then you confirm every item before it goes live."}>
+        <section id="import" className="scroll-mt-20">
+        <Card title={mode === "update" ? "Upload a revised PDF (optional)" : !ws.live && !ws.empty ? "Try importing a brand kit (optional)" : "Upload the brand kit"}
+          sub={mode === "update" ? "Use this when the brand published a new version of its guidelines. It replaces the editor below; you can also just edit the live kit there."
+            : !ws.live && !ws.empty ? "The sample brand is already loaded, so this step isn't needed. To see how importing works, read the sample PDF in one click, or upload your own."
+            : "The app reads the PDF, then you confirm every item before it goes live."}>
           <div className="grid gap-6 lg:grid-cols-2">
             <div>
-              {!ws.live && !ws.empty && ws.post_count > 0 && <Notice tone="warning" className="mb-3">This is the demo workspace. Activating a real brand kit moves the demo posts to history.</Notice>}
+              {!ws.live && (
+                <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-teal/40 bg-teal-soft/50 p-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-white text-teal-dark ring-1 ring-line"><Icon name="file" className="h-5 w-5" /></span>
+                  <div className="min-w-0 flex-1 text-sm">
+                    <p className="font-medium">Sample brand-kit PDF</p>
+                    <p className="text-xs text-muted">Sunrise Tutorials, a fictional tuition brand. You review what the app read before anything goes live.</p>
+                  </div>
+                  <button className="btn btn-teal btn-sm" disabled={!!busy} onClick={readSamplePdf}>Read the sample PDF</button>
+                </div>
+              )}
+              {!ws.live && !ws.empty && ws.post_count > 0 && <Notice tone="warning" className="mb-3">Activating another brand kit moves the sample posts to history. You can bring the sample brand back any time with &ldquo;Restore the demo brand&rdquo;.</Notice>}
               <label className={`flex cursor-pointer flex-col items-center rounded-lg border border-dashed border-[#CDD3DC] bg-canvas px-4 py-8 text-center text-sm transition-colors hover:border-teal hover:bg-teal-soft/40 ${busy ? "pointer-events-none opacity-70" : ""}`}>
                 <input type="file" accept="application/pdf" className="sr-only" onChange={(e) => { uploadPdf(e.target.files?.[0]); e.target.value = ""; }} />
                 <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-teal-dark shadow-sm ring-1 ring-line"><Icon name={busy ? "refresh" : "upload"} className={`h-[18px] w-[18px] ${busy ? "animate-spin" : ""}`} /></span>
@@ -198,7 +238,7 @@ export default function WorkspacePage() {
                   {logo ? "Replace" : "Upload logo"}
                 </label>
               </div>
-              {!ws.live && <button className="btn btn-ghost btn-sm mt-3" onClick={() => setDialog({ kind: "demo" })}>Load the demo brand instead</button>}
+              {!ws.live && <button className="btn btn-ghost btn-sm mt-3" onClick={() => setDialog({ kind: "demo" })}><Icon name="refresh" className="h-3.5 w-3.5" />Restore the demo brand and start over</button>}
             </div>
             <div className="rounded-lg bg-canvas p-4 text-sm">
               <h3 className="font-semibold">What a good brand kit PDF contains</h3>
@@ -213,10 +253,11 @@ export default function WorkspacePage() {
             </div>
           </div>
         </Card>
+        </section>
       )}
 
       {editing && (
-        <section className="panel">
+        <section id="kit-review" className="panel scroll-mt-20">
           <div className="border-b border-line px-5 py-4">
             <h2 className="text-base font-semibold">{mode === "update" ? `Edit the live brand kit (revision ${(ws.meta.revision || 1) + 1})` : "Review before activating"}</h2>
             <p className="mt-0.5 text-sm text-muted">{fileName ? `${fileName}. ` : ""}Each item shows the page and words it came from. Edit or remove anything wrong.</p>
@@ -459,10 +500,10 @@ export default function WorkspacePage() {
           note="The new brand kit starts with an empty Write and Review." />
       )}
       {dialog?.kind === "demo" && (
-        <DangerDialog title="Load the demo brand?" confirmWord="demo" action="Load demo"
+        <DangerDialog title="Restore the demo brand?" confirmWord="demo" action="Restore demo"
           onCancel={() => setDialog(null)} onConfirm={loadDemo}
-          items={["Any brand kit you started", "All posts, reviews and insights"]}
-          note="Replaces everything, including all history, with the fictional Northstar Civils Academy demo. This cannot be undone." />
+          items={["Any brand kit you imported or started", "All posts, reviews and insights you created"]}
+          note="Puts the app back exactly as it was at the start: the fictional Northstar Civils Academy brand kit and its sample posts. This cannot be undone." />
       )}
     </div>
   );

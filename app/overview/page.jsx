@@ -6,6 +6,7 @@ import { useRole } from "@/components/RoleProvider";
 import { useWorkspaceMeta } from "@/components/Shell";
 import Icon from "@/components/Icon";
 import { StatusChip, Card, EmptyState, Bar } from "@/components/ui";
+import DemoGuide from "@/components/DemoGuide";
 
 const STATUS_ORDER = [
   { key: "draft", label: "Drafts", cls: "bg-[#CBD5E1]" },
@@ -75,6 +76,8 @@ export default function OverviewPage() {
           {person && person.role !== "Creator" && <Link href="/review" className="btn btn-quiet">Open review queue</Link>}
         </div>
       </div>
+
+      <DemoGuide person={person} />
 
       {/* Governance status: the one-line answer, then the numbers behind it */}
       <section className="panel overflow-hidden">

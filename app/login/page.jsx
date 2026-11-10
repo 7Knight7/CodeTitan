@@ -3,7 +3,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { ROLES } from "@/components/RoleProvider";
-import { Logo } from "@/components/Icon";
+import Icon, { Logo } from "@/components/Icon";
 
 const ROLE_HELP = {
   Creator: "Writes posts, fixes issues and sends them for review.",
@@ -34,7 +34,7 @@ function Login() {
     setBusy(true); setError("");
     try {
       await api("/login", { method: "POST", body: { password: needsPassword ? password : "", role } });
-      const next = params.get("next") || "/";
+      const next = params.get("next") || "/overview"; // the guided demo lives on Overview
       window.location.href = next.startsWith("/") && !next.startsWith("//") ? next : "/"; // no open redirects
     } catch (err) {
       setError(err.message);
@@ -55,7 +55,11 @@ function Login() {
           <p className="mt-1.5 text-sm leading-6 text-muted">
             Pre-publication brand and ad-claim checks{brand && brand !== "No brand kit yet" ? ` for ${brand}` : ""}. Choose who you are to start.
           </p>
-          <form onSubmit={submit} className="mt-8 space-y-5">
+          <p className="mt-4 flex items-start gap-2.5 rounded-lg bg-teal-soft/70 px-3.5 py-2.5 text-sm ring-1 ring-inset ring-teal/25">
+            <Icon name="checkCircle" className="mt-0.5 h-4 w-4 shrink-0 text-teal-dark" />
+            <span>No setup needed. A sample brand kit is already loaded, and a guided demo opens after you continue.</span>
+          </p>
+          <form onSubmit={submit} className="mt-6 space-y-5">
             {needsPassword && (
               <div>
                 <label className="label" htmlFor="password">Password</label>
