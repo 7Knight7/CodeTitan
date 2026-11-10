@@ -9,6 +9,8 @@ import IssueCard from "@/components/IssueCard";
 import PostPreview from "@/components/PostPreview";
 import BrandFitBanner from "@/components/BrandFitBanner";
 import { MemoryTips } from "@/components/BrandMemory";
+import Icon from "@/components/Icon";
+import { Card, Notice, PageHeader, StatusChip } from "@/components/ui";
 
 const MAX_MEDIA = 10;
 const LEGACY = { // posts saved before platforms existed
@@ -21,7 +23,7 @@ const LAYER_LABEL = { platform: "Platform requirements", regulation: "Indian adv
 const isMediaLoc = (loc = "") => /^(image|video|document) /.test(loc);
 
 export default function Page() {
-  return <Suspense fallback={<p className="text-muted">Loading…</p>}><WritePage /></Suspense>;
+  return <Suspense fallback={<div className="space-y-4"><div className="skeleton h-8 w-64" /><div className="skeleton h-48 w-full" /></div>}><WritePage /></Suspense>;
 }
 
 function WritePage() {
@@ -225,229 +227,303 @@ function WritePage() {
   const layers = cfg?.layers || [];
   const totalChecks = profile ? profile.layers.reduce((n, L) => n + L.checks.length, 0) : 0;
 
-  return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]">
-      <section className="space-y-5">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="font-proof text-3xl font-semibold">Check a post before it goes out</h1>
-            <p className="mt-1 max-w-prose text-muted">
-              Choose where it goes, the format and whether it is paid. The composer shows only what that post needs, and it is
-              checked against {brandName}&rsquo;s brand kit, approved facts, Indian ad rules and the platform&rsquo;s own limits.
-            </p>
-          </div>
-          <button className="btn btn-quiet" onClick={startNew}>New post</button>
-        </div>
+  const summary = result?.summary;
+  const unresolvedWarnings = findings.filter((f) => f.severity === "warning" && !decisions.get(keyOf(f))).length;
 
-        {noKit && <p className="rounded-md bg-warning-soft px-4 py-3 text-sm text-warning">No brand kit is live yet, so posts can&rsquo;t be checked. The marketing head must upload the brand kit in Brand workspace first.</p>}
-        {notCreator && <p className="rounded-md bg-warning-soft px-4 py-3 text-sm text-warning">You are signed in as {person.name}. You can try platforms, formats and the preview here, but only creators check and send posts; switch to Priya in the header.</p>}
+  return (
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,25rem)] xl:grid-cols-[minmax(0,1fr)_minmax(0,27rem)]">
+      <section className="min-w-0 space-y-5">
+        <PageHeader title="Content checker"
+          sub={<>Pick where the post goes, its format and whether it is paid. The composer shows only the fields that post needs, and checks it against {brandName}&rsquo;s brand kit, approved facts, Indian ad rules and the platform&rsquo;s own limits.</>}
+          actions={<button className="btn btn-quiet" onClick={startNew}><Icon name="plus" className="h-4 w-4" />New post</button>} />
+
+        {noKit && <Notice tone="warning">No brand kit is live yet, so posts can&rsquo;t be checked. The marketing head must upload the brand kit in Brand guidelines first.</Notice>}
+        {notCreator && <Notice tone="info">You are signed in as {person.name}. You can try platforms, formats and the preview here, but only creators check and send posts. Switch to Priya from the account menu in the top right.</Notice>}
         {draft && (
-          <div className="panel flex flex-wrap items-center gap-3 px-4 py-3 text-sm">
-            <span className="font-medium">{STATUS_LABEL[draft.status]}</span>
+          <div className="panel flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 text-sm">
+            <StatusChip status={draft.status} />
             <span className="text-muted">Version {draft.version}</span>
-            {draft.campaign_id && <span className="rounded bg-canvas px-2 py-0.5 text-xs text-muted">{draft.adapted_from ? "Adapted version" : "Campaign source"}</span>}
+            {draft.campaign_id && <span className="chip">{draft.adapted_from ? "Adapted version" : "Campaign source"}</span>}
+            <Link href={`/drafts/${draft.id}`} className="link ml-auto inline-flex items-center gap-1.5"><Icon name="history" className="h-4 w-4" />History</Link>
             {draft.review?.action === "request_changes" && draft.status === "changes_requested" && (
-              <span className="w-full rounded-md bg-warning-soft px-3 py-2 text-warning">{draft.review.by} asked for changes: {draft.review.comment}</span>
+              <Notice tone="warning" className="w-full"><span className="font-medium">{draft.review.by} asked for changes:</span> {draft.review.comment}</Notice>
             )}
-            <Link href={`/drafts/${draft.id}`} className="ml-auto text-suggestion underline">History</Link>
           </div>
         )}
 
         {/* Where, how and under what commercial context: always visible so changing fields make sense */}
-        <div id="selectors" className="panel space-y-4 p-4">
-          <div>
-            <label className="label" htmlFor="title">Post title (for your team)</label>
-            <input id="title" className="field" value={title} disabled={locked} maxLength={150} onChange={(e) => setTitle(e.target.value)} />
-          </div>
-          {cfg && (
-            <>
-              <fieldset disabled={locked}>
-                <legend className="label">Where it will be published</legend>
-                <div className="flex flex-wrap gap-2" role="radiogroup">
-                  {cfg.platforms.map((p) => (
-                    <button key={p.id} type="button" role="radio" aria-checked={platform === p.id} onClick={() => choosePlatform(p.id)}
-                      className={`rounded-md border px-3 py-1.5 text-sm ${platform === p.id ? "border-ink bg-ink text-white" : "border-line bg-white hover:bg-canvas"}`}>{p.label}</button>
-                  ))}
-                </div>
-              </fieldset>
-              <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_14rem]">
+        <div id="selectors" className="panel scroll-mt-20">
+          <div className="space-y-5 p-5">
+            <div>
+              <label className="label" htmlFor="title">Post title <span className="font-normal text-muted">(for your team)</span></label>
+              <input id="title" className="field" value={title} disabled={locked} maxLength={150} onChange={(e) => setTitle(e.target.value)} />
+            </div>
+            {!cfg && <div className="space-y-3"><div className="skeleton h-9 w-full" /><div className="skeleton h-9 w-2/3" /></div>}
+            {cfg && (
+              <>
                 <fieldset disabled={locked}>
-                  <legend className="label">Format</legend>
-                  <div className="flex flex-wrap gap-2" role="radiogroup">
-                    {platformCfg?.formats.map((f) => (
-                      <button key={f.id} type="button" role="radio" aria-checked={format === f.id} onClick={() => setFormat(f.id)}
-                        className={`rounded-full border px-3 py-1 text-sm ${format === f.id ? "border-suggestion bg-suggestion-soft font-medium text-suggestion" : "border-line bg-white hover:bg-canvas"}`}>{f.label}</button>
-                    ))}
+                  <legend className="label">Platform</legend>
+                  <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Platform">
+                    {cfg.platforms.map((p) => {
+                      const on = platform === p.id;
+                      return (
+                        <button key={p.id} type="button" role="radio" aria-checked={on} onClick={() => choosePlatform(p.id)}
+                          className={`flex flex-auto items-center gap-2.5 rounded-md border py-2 pl-2 pr-3.5 text-left text-sm transition-colors disabled:cursor-not-allowed sm:flex-none ${on ? "border-teal bg-teal-soft font-medium text-ink ring-1 ring-teal" : "border-line bg-white text-ink hover:border-[#CDD3DC] hover:bg-canvas"}`}>
+                          <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${on ? "bg-white text-teal-dark" : "bg-canvas text-muted"}`}>
+                            <Icon name={PLATFORM_ICON[p.id] || "globe"} className="h-4 w-4" />
+                          </span>
+                          <span className="whitespace-nowrap">{p.label}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </fieldset>
-                <div>
-                  <label className="label" htmlFor="context">Commercial context</label>
-                  <select id="context" className="field" value={context} disabled={locked} onChange={(e) => setContext(e.target.value)}>
-                    {cfg.contexts.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-                  </select>
-                  {contextCfg && <p className="mt-1 text-xs text-muted">{contextCfg.help}</p>}
-                </div>
-              </div>
-              {profile && (
-                <div className="rounded-md bg-canvas px-3 py-2 text-sm">
-                  <button type="button" className="flex w-full items-center gap-2 text-left" onClick={() => setShowProfile(!showProfile)} aria-expanded={showProfile}>
-                    <span><span className="font-medium">{profile.label}</span><span className="text-muted"> · {totalChecks} checks in {profile.layers.filter((L) => L.checks.length).length} layers</span></span>
-                    <span className="ml-auto text-xs underline">{showProfile ? "Hide" : "What is checked"}</span>
-                  </button>
-                  {showProfile && (
-                    <div className="mt-2 grid gap-3 sm:grid-cols-2">
-                      {profile.layers.filter((L) => L.checks.length).map((L) => (
-                        <div key={L.id}>
-                          <p className="text-xs font-semibold">{L.label}</p>
-                          <ul className="mt-1 space-y-0.5 text-xs text-muted">
-                            {L.checks.slice(0, 8).map((c) => <li key={c.id} title={c.source}>{c.name}</li>)}
-                            {L.checks.length > 8 && <li>and {L.checks.length - 8} more</li>}
-                          </ul>
-                        </div>
+                <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_15rem]">
+                  <fieldset disabled={locked} className="min-w-0">
+                    <legend className="label">Format</legend>
+                    <div className="seg" role="radiogroup" aria-label="Format">
+                      {platformCfg?.formats.map((f) => (
+                        <button key={f.id} type="button" role="radio" aria-checked={format === f.id} onClick={() => setFormat(f.id)} className="seg-item">{f.label}</button>
                       ))}
                     </div>
-                  )}
+                  </fieldset>
+                  <div>
+                    <label className="label" htmlFor="context">Commercial context</label>
+                    <select id="context" className="field" value={context} disabled={locked} onChange={(e) => setContext(e.target.value)}>
+                      {cfg.contexts.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+                    </select>
+                    {contextCfg && <p className="mt-1.5 text-xs text-muted">{contextCfg.help}</p>}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+          {profile && (
+            <div className="border-t border-line bg-canvas/70 px-5 py-3 text-sm">
+              <button type="button" className="flex w-full items-center gap-2.5 text-left" onClick={() => setShowProfile(!showProfile)} aria-expanded={showProfile}>
+                <Icon name="layers" className="h-4 w-4 text-muted" />
+                <span className="min-w-0"><span className="font-medium">{profile.label}</span><span className="text-muted">: {totalChecks} checks in {profile.layers.filter((L) => L.checks.length).length} layers</span></span>
+                <span className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-teal-dark">{showProfile ? "Hide" : "What is checked"}<Icon name="chevronDown" className={`h-3.5 w-3.5 transition-transform ${showProfile ? "rotate-180" : ""}`} /></span>
+              </button>
+              {showProfile && (
+                <div className="mt-3 grid gap-4 pb-1 sm:grid-cols-2 xl:grid-cols-3">
+                  {profile.layers.filter((L) => L.checks.length).map((L) => (
+                    <div key={L.id}>
+                      <p className="text-xs font-semibold">{L.label} <span className="font-normal text-muted">({L.checks.length})</span></p>
+                      <ul className="mt-1 space-y-0.5 text-xs text-muted">
+                        {L.checks.slice(0, 8).map((c) => <li key={c.id} title={c.source}>{c.name}</li>)}
+                        {L.checks.length > 8 && <li>and {L.checks.length - 8} more</li>}
+                      </ul>
+                    </div>
+                  ))}
                 </div>
               )}
-            </>
+            </div>
           )}
         </div>
 
-        <div className="panel p-4">
-          <div className="sticky top-0 z-10 -mx-4 -mt-4 mb-4 flex flex-wrap items-center gap-1 rounded-t-lg border-b border-line bg-white px-4 pt-2">
-            <div className="flex gap-1" role="tablist">
-              {[["edit", "Write"], ["preview", "Preview"]].map(([id, label]) => (
-                <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
-                  className={`-mb-px border-b-2 px-3 py-2 text-sm ${tab === id ? "border-ink font-semibold" : "border-transparent text-muted hover:text-ink"}`}>{label}</button>
+        <div className="panel">
+          <div className="sticky top-14 z-10 flex flex-wrap items-center gap-2 rounded-t-lg border-b border-line bg-white/95 px-4 py-2.5 backdrop-blur">
+            <div className="seg" role="tablist">
+              {[["edit", "Write", "checker"], ["preview", "Preview", "eye"]].map(([id, label, icon]) => (
+                <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className="seg-item inline-flex items-center gap-1.5">
+                  <Icon name={icon} className="h-3.5 w-3.5" />{label}
+                </button>
               ))}
             </div>
             {schema && (
-              <a href="#selectors" className="ml-auto mb-1 rounded-full bg-canvas px-3 py-1 text-xs text-muted hover:text-ink" title="Change platform, format or context">
-                {schema.label}{context === "organic" ? " · Organic" : ""} <span className="underline">Change</span>
+              <a href="#selectors" className="chip ml-auto hover:text-ink" title="Change platform, format or context">
+                {schema.label}{context === "organic" ? ", organic" : ""} <span className="text-teal-dark">Change</span>
               </a>
             )}
           </div>
 
-          {tab === "preview" && schema && (
-            <PostPreview layout={schema.layout} platform={platform} format={format} context={context} contextLabel={contextCfg?.label}
-              brand={ws?.meta?.name || "Your brand"} text={caption} fields={fields} media={usedMedia} />
-          )}
+          <div className="p-5">
+            {!schema && <div className="space-y-3"><div className="skeleton h-24 w-full" /><div className="skeleton h-10 w-full" /></div>}
+            {tab === "preview" && schema && (
+              <div className="rounded-lg bg-canvas p-4 sm:p-6">
+                <PostPreview layout={schema.layout} platform={platform} format={format} context={context} contextLabel={contextCfg?.label}
+                  brand={ws?.meta?.name || "Your brand"} text={caption} fields={fields} media={usedMedia} />
+              </div>
+            )}
 
-          {tab === "edit" && schema && (
-            <div className="space-y-4">
-              {inputErrors.length > 0 && (
-                <p role="alert" className="rounded-md bg-blocker-soft px-3 py-2 text-sm text-blocker">
-                  Complete {inputErrors.length} field{inputErrors.length > 1 ? "s" : ""} before sending: {inputErrors.map((e) => e.message).join(" ")}
-                </p>
-              )}
-              {renderGroups(schema.fields).map((g) => (
-                <div key={g.title || "main"} className={g.title ? "space-y-3 rounded-lg border border-line p-3" : "space-y-4"}>
-                  {g.title && <p className="text-sm font-semibold">{g.title} details
-                    {g.fields.some((x) => x.internal) && <span className="block text-xs font-normal text-muted">For the reviewer and the disclosure check; these details are not published.</span>}</p>}
-                  {g.fields.map((x) => x.type === "media"
-                    ? <MediaInput key="media" spec={x} media={media} used={usedMedia} unused={unused} locked={locked} reading={reading}
-                        hasLogo={!!ws?.meta?.logo} errors={errorsByField.media} onAdd={addMedia} onChange={updateMedia}
-                        onRemove={(m) => setMedia((cur) => cur.filter((y) => y !== m))} onMove={moveMedia} />
-                    : <FieldInput key={x.id} spec={x} value={fields[x.id] || ""} locked={locked} errors={errorsByField[x.id]}
-                        prominent={x.id === "main_text" && schema.layout === "text"} onChange={(v) => setField(x.id, v)} />)}
-                </div>
-              ))}
-            </div>
-          )}
+            {tab === "edit" && schema && (
+              <div className="space-y-5">
+                {inputErrors.length > 0 && (
+                  <Notice tone="error" role="alert">
+                    Complete {inputErrors.length} field{inputErrors.length > 1 ? "s" : ""} before sending: {inputErrors.map((e) => e.message).join(" ")}
+                  </Notice>
+                )}
+                {renderGroups(schema.fields).map((g) => (
+                  <div key={g.title || "main"} className={g.title ? "space-y-4 rounded-lg border border-line bg-canvas/50 p-4" : "space-y-5"}>
+                    {g.title && <p className="text-sm font-semibold">{g.title} details
+                      {g.fields.some((x) => x.internal) && <span className="mt-0.5 block text-xs font-normal text-muted">For the reviewer and the disclosure check; these details are not published.</span>}</p>}
+                    {g.fields.map((x) => x.type === "media"
+                      ? <MediaInput key="media" spec={x} media={media} used={usedMedia} unused={unused} locked={locked} reading={reading}
+                          hasLogo={!!ws?.meta?.logo} errors={errorsByField.media} onAdd={addMedia} onChange={updateMedia}
+                          onRemove={(m) => setMedia((cur) => cur.filter((y) => y !== m))} onMove={moveMedia} />
+                      : <FieldInput key={x.id} spec={x} value={fields[x.id] || ""} locked={locked} errors={errorsByField[x.id]}
+                          prominent={x.id === "main_text" && schema.layout === "text"} onChange={(v) => setField(x.id, v)} />)}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
-          <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-line pt-4">
-            <button className="btn btn-primary" disabled={busy || locked || !canAct || !!reading || !schema} onClick={() => check()}>{busy ? "Checking…" : "Check post"}</button>
-            {draft?.platform && !locked && canAct && <button className="btn btn-quiet" onClick={() => setAdaptOpen(!adaptOpen)}>Adapt for other platforms</button>}
+          <div className="flex flex-wrap items-center gap-3 rounded-b-lg border-t border-line bg-canvas/60 px-5 py-4">
+            <button className="btn btn-teal" disabled={busy || locked || !canAct || !!reading || !schema} onClick={() => check()}>
+              <Icon name={result ? "refresh" : "shield"} className="h-4 w-4" />{busy ? "Checking…" : result ? "Check again" : "Check post"}
+            </button>
+            {draft?.platform && !locked && canAct && <button className="btn btn-quiet" onClick={() => setAdaptOpen(!adaptOpen)} aria-expanded={adaptOpen}><Icon name="copy" className="h-4 w-4" />Adapt for other platforms</button>}
             <span className="text-xs text-muted">Switching format keeps what you typed; only the fields shown are checked.</span>
           </div>
-          {adaptOpen && draft && <AdaptPanel cfg={cfg} draft={draft} current={{ platform: draft.platform, format: draft.format }} onDone={() => { loadMine(); }} />}
+          {adaptOpen && draft && <div className="border-t border-line p-5"><AdaptPanel cfg={cfg} draft={draft} current={{ platform: draft.platform, format: draft.format }} onDone={() => { loadMine(); }} /></div>}
         </div>
 
-        {error && <p role="alert" className="rounded-md bg-blocker-soft px-4 py-3 text-sm text-blocker">{error}</p>}
+        {error && <Notice tone="error" role="alert">{error}</Notice>}
         {notice && (
-          <p role="status" className="rounded-md bg-approved-soft px-4 py-3 text-sm text-approved">
-            {notice} <Link href="/review" className="underline">Open the review queue</Link> and switch to a reviewer in the header to decide.
-          </p>
+          <Notice tone="success" role="status">
+            {notice} <Link href="/review" className="font-medium underline">Open the review queue</Link> and switch to a reviewer from the account menu to decide.
+          </Notice>
         )}
 
         {result && caption.trim() && (
-          <div id="results" className="panel scroll-mt-4 p-5">
-            <h2 className="mb-3 text-sm font-semibold text-muted">{schema?.fields.find((x) => x.id === "main_text")?.label || "Caption"} with issues marked</h2>
-            <ProofText text={caption} findings={findings} activeId={activeId} resolvedKeys={keptKeys}
-              onSelect={(id) => { setActiveId(id); document.getElementById(`card-${id}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }} />
+          <div id="results" className="panel scroll-mt-20">
+            <div className="flex items-center gap-2 border-b border-line px-5 py-3.5">
+              <h2 className="section-title">{schema?.fields.find((x) => x.id === "main_text")?.label || "Caption"} with issues marked</h2>
+              <span className="ml-auto hidden items-center gap-3 text-xs text-muted sm:flex">
+                <span className="flex items-center gap-1.5"><span className="h-0.5 w-3 rounded bg-blocker-vivid" />Critical</span>
+                <span className="flex items-center gap-1.5"><span className="h-0.5 w-3 rounded bg-warning-vivid" />Warning</span>
+                <span className="flex items-center gap-1.5"><span className="h-0.5 w-3 rounded bg-suggestion-vivid" />Suggestion</span>
+              </span>
+            </div>
+            <div className="px-5 py-4">
+              <ProofText text={caption} findings={findings} activeId={activeId} resolvedKeys={keptKeys}
+                onSelect={(id) => { setActiveId(id); document.getElementById(`card-${id}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }} />
+            </div>
           </div>
         )}
 
         {myDrafts.length > 0 && (
-          <div>
-            <h2 className="mb-2 text-sm font-semibold text-muted">Posts with the creator</h2>
-            <ul className="space-y-2">
+          <Card title="Posts with the creator" sub="Drafts and posts sent back for changes" bodyClass="p-0">
+            <ul className="divide-y divide-line">
               {myDrafts.map((d) => (
                 <li key={d.id}>
-                  <Link href={`/?draft=${d.id}`} className="panel flex flex-wrap items-center gap-x-3 px-4 py-2 text-sm hover:bg-canvas">
-                    <span className="font-medium">{d.title}</span>
-                    <span className="text-xs text-muted">{d.channel}</span>
-                    <span className={`ml-auto text-xs ${d.status === "changes_requested" ? "text-warning" : "text-muted"}`}>{STATUS_LABEL[d.status]}</span>
+                  <Link href={`/?draft=${d.id}`} className={`flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-3 text-sm transition-colors hover:bg-canvas ${draft?.id === d.id ? "bg-teal-soft/50" : ""}`}>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium">{d.title}</span>
+                      <span className="block truncate text-xs text-muted">{d.channel}</span>
+                    </span>
+                    <StatusChip status={d.status} />
                   </Link>
                 </li>
               ))}
             </ul>
-          </div>
+          </Card>
         )}
       </section>
 
-      <aside className="space-y-4 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
+      <aside className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:pb-2" aria-label="Check results">
         {!notCreator && !noKit && <MemoryTips />}
         {!result ? (
-          <div className="panel p-5 text-sm text-muted">
-            <p className="font-medium text-ink">Issues will appear here.</p>
-            <p className="mt-2">Pick the platform, format and context, fill in what the composer asks for, then press <span className="font-medium text-ink">Check post</span>. Findings are grouped by layer: platform, regulations, brand, facts and visuals.</p>
+          <div className="panel p-6">
+            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-teal-soft text-teal-dark"><Icon name="shield" className="h-5 w-5" /></span>
+            <p className="mt-4 font-semibold">Results appear here</p>
+            <p className="mt-1.5 text-sm leading-6 text-muted">Fill in what the composer asks for, then press <span className="font-medium text-ink">Check post</span>. Every finding names its source and is grouped by layer.</p>
+            <ul className="mt-4 space-y-2 border-t border-line pt-4 text-sm">
+              {(layers.length ? layers : Object.entries(LAYER_LABEL).map(([id, label]) => ({ id, label }))).map((L) => (
+                <li key={L.id} className="flex items-center gap-2.5 text-muted">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-canvas ring-1 ring-line"><Icon name={LAYER_ICON[L.id] || "layers"} className="h-3 w-3" /></span>
+                  {LAYER_LABEL[L.id] || L.label}
+                </li>
+              ))}
+            </ul>
           </div>
         ) : (
           <>
-            <BrandFitBanner fit={result.summary.brand_fit} />
-            <div className="panel p-4 text-sm">
-              <div className="flex gap-4">
-                <Count n={result.summary.blocker} label="blockers" cls="text-blocker" />
-                <Count n={result.summary.warning} label="warnings" cls="text-warning" />
-                <Count n={result.summary.suggestion} label="suggestions" cls="text-suggestion" />
+            <div className="panel overflow-hidden">
+              <ResultVerdict locked={locked} draft={draft} blockers={openBlockerList.length} warnings={unresolvedWarnings}
+                inputErrors={inputErrors.length} summary={summary} />
+              <div className="grid grid-cols-3 border-y border-line">
+                <Count n={summary.blocker} label="Critical" tone="blocker" />
+                <Count n={summary.warning} label="Warnings" tone="warning" />
+                <Count n={summary.suggestion} label="Suggestions" tone="suggestion" />
               </div>
-              {result.summary.checks_run > 0 && (
-                <p className="mt-2 text-xs text-muted"><span className="font-semibold text-approved">{result.summary.checks_passed} of {result.summary.checks_run}</span> checks passed.</p>
+              <ul className="divide-y divide-line text-sm">
+                {(layers.length ? layers.map((L) => L.id) : Object.keys(LAYER_LABEL)).map((lid) => {
+                  const list = findings.filter((f) => (f.layer || "brand") === lid);
+                  const checks = profile?.layers.find((L) => L.id === lid)?.checks.length;
+                  if (!list.length && !checks) return null;
+                  const worst = list.some((f) => f.severity === "blocker") ? "blocker" : list.some((f) => f.severity === "warning") ? "warning" : list.length ? "suggestion" : null;
+                  return (
+                    <li key={lid}>
+                      <a href={list.length ? `#layer-${lid}` : undefined} className={`flex items-center gap-3 px-4 py-2.5 ${list.length ? "hover:bg-canvas" : ""}`}>
+                        <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${worst ? `bg-${worst}-soft text-${worst}` : "bg-approved-soft text-approved"}`}>
+                          <Icon name={worst ? (worst === "blocker" ? "alertCircle" : worst === "warning" ? "alert" : "info") : "check"} className="h-3.5 w-3.5" strokeWidth={2} />
+                        </span>
+                        <span className="min-w-0 flex-1 truncate">{LAYER_LABEL[lid]}</span>
+                        <span className={`text-xs ${worst ? `font-medium text-${worst}` : "text-approved"}`}>
+                          {list.length ? `${list.length} issue${list.length > 1 ? "s" : ""}` : "Passed"}
+                        </span>
+                      </a>
+                    </li>
+                  );
+                })}
+              </ul>
+              {(summary.checks_run > 0 || summary.sensitive) && (
+                <div className="space-y-2 border-t border-line px-4 py-3">
+                  {summary.checks_run > 0 && (
+                    <div className="flex items-center gap-3 text-xs">
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-canvas"><div className="h-full rounded-full bg-approved-vivid" style={{ width: `${(summary.checks_passed / summary.checks_run) * 100}%` }} /></div>
+                      <span className="text-muted"><span className="font-semibold text-approved">{summary.checks_passed} of {summary.checks_run}</span> checks passed</span>
+                    </div>
+                  )}
+                  {summary.sensitive && <Notice tone="sensitive">Sensitive topic: only the marketing head can approve this post.</Notice>}
+                </div>
               )}
-              {result.summary.sensitive && <p className="mt-2 rounded bg-sensitive-soft px-2 py-1 text-xs text-sensitive">Sensitive topic: only the marketing head can approve this post.</p>}
               {draft && !locked && canAct && (
-                <div className="mt-4 border-t border-line pt-4">
-                  <button className="btn btn-approve w-full" disabled={busy || openBlockerList.length > 0} onClick={submit}>
-                    {draft.status === "changes_requested" ? "Send back for review" : "Send for review"}
+                <div className="border-t border-line bg-canvas/60 p-4">
+                  <button className="btn btn-teal w-full" disabled={busy || openBlockerList.length > 0} onClick={submit}>
+                    <Icon name="send" className="h-4 w-4" />{draft.status === "changes_requested" ? "Send back for review" : "Send for review"}
                   </button>
-                  {sendError && <p role="alert" className="mt-2 rounded bg-blocker-soft px-2 py-1.5 text-xs font-medium text-blocker">Not sent. {sendError}</p>}
+                  {sendError && <Notice tone="error" role="alert" className="mt-3"><span className="font-medium">Not sent.</span> {sendError}</Notice>}
                   {openBlockerList.length > 0
-                    ? <p className="mt-2 rounded bg-blocker-soft px-2 py-1.5 text-xs text-blocker">
+                    ? <p className="mt-2.5 text-xs leading-5 text-blocker">
                         <span className="font-semibold">{openBlockerList.length} blocker{openBlockerList.length > 1 ? "s" : ""} must be resolved before sending</span> ({openBlockerList.map((f) => f.name).join(", ")}). Fix it and check again, or press &ldquo;Keep original&rdquo; with a reason.
                       </p>
                     : inputErrors.length > 0
-                      ? <p className="mt-2 text-xs text-blocker">{inputErrors.length} field{inputErrors.length > 1 ? "s" : ""} still to complete.</p>
-                      : <p className="mt-2 text-xs text-muted">No open blockers. A reviewer will see every decision you made.</p>}
+                      ? <p className="mt-2.5 text-xs text-blocker">{inputErrors.length} field{inputErrors.length > 1 ? "s" : ""} still to complete.</p>
+                      : <p className="mt-2.5 text-xs text-muted">No open blockers. A reviewer will see every decision you made.</p>}
                 </div>
               )}
-              {locked && draft && !notCreator && !noKit && <p className="mt-3 text-xs text-muted">This version is {STATUS_LABEL[draft.status].toLowerCase()} and can no longer be edited.</p>}
+              {locked && draft && !notCreator && !noKit && <p className="border-t border-line px-4 py-3 text-xs text-muted">This version is {STATUS_LABEL[draft.status].toLowerCase()} and can no longer be edited.</p>}
             </div>
+
+            <BrandFitBanner fit={summary.brand_fit} />
+
             {result.verified?.length > 0 && (
-              <div className="panel p-4 text-sm">
-                <h2 className="font-semibold text-approved">Matches approved facts</h2>
-                <ul className="mt-2 space-y-1">{result.verified.map((v, i) => <li key={i}>&ldquo;{v.quote}&rdquo; <span className="text-muted">({v.location}) matches {v.fact_id}: {v.label}</span></li>)}</ul>
+              <Card title={<span className="inline-flex items-center gap-2 text-approved"><Icon name="checkCircle" className="h-4 w-4" />Matches approved facts</span>} bodyClass="px-5 py-3">
+                <ul className="space-y-2 text-sm">{result.verified.map((v, i) => <li key={i}>&ldquo;{v.quote}&rdquo; <span className="block text-xs text-muted">{v.location}: matches {v.fact_id}, {v.label}</span></li>)}</ul>
+              </Card>
+            )}
+            {findings.length === 0 && (
+              <div className="panel p-5 text-center">
+                <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-approved-soft text-approved"><Icon name="check" className="h-5 w-5" /></span>
+                <p className="mt-3 text-sm font-medium">No issues found</p>
+                <p className="mt-1 text-sm text-muted">Send it for review when you are ready.</p>
               </div>
             )}
-            {findings.length === 0 && <p className="panel p-4 text-sm text-approved">No issues found. Send it for review when you are ready.</p>}
             {(layers.length ? layers.map((L) => L.id) : Object.keys(LAYER_LABEL)).map((lid) => {
               const list = findings.filter((f) => (f.layer || "brand") === lid);
               if (!list.length) return null;
               return (
-                <div key={lid} className="space-y-3">
-                  <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">{LAYER_LABEL[lid]} ({list.length})</h2>
+                <div key={lid} id={`layer-${lid}`} className="scroll-mt-20 space-y-3">
+                  <h2 className="flex items-center gap-2 pt-2 text-sm font-semibold">
+                    <Icon name={LAYER_ICON[lid] || "layers"} className="h-4 w-4 text-muted" />{LAYER_LABEL[lid]}
+                    <span className="chip px-2 py-0">{list.length}</span>
+                  </h2>
                   {list.map((f) => (
-                    <div id={`card-${f.id}`} key={f.id}>
+                    <div id={`card-${f.id}`} key={f.id} className="scroll-mt-20">
                       <IssueCard finding={f} n={findings.indexOf(f) + 1} active={activeId === f.id} onSelect={setActiveId}
                         decision={decisions.get(keyOf(f))} disabled={locked || busy || !canAct} onDecide={(action, opts) => decide(f, action, opts)} />
                     </div>
@@ -458,6 +534,33 @@ function WritePage() {
           </>
         )}
       </aside>
+    </div>
+  );
+}
+
+const PLATFORM_ICON = { instagram: "image", linkedin: "file", facebook: "message", whatsapp: "send", website: "globe" };
+const LAYER_ICON = { platform: "layers", regulation: "scale", brand: "palette", facts: "facts", visual: "eye" };
+
+/** One-line answer at the top of the results: can this be sent, and if not, why. */
+function ResultVerdict({ locked, draft, blockers, warnings, inputErrors, summary }) {
+  let tone, icon, title, body;
+  if (locked && draft) { tone = "teal"; icon = "lock"; title = STATUS_LABEL[draft.status]; body = "This version is with the reviewer or already approved."; }
+  else if (blockers) { tone = "blocker"; icon = "alertCircle"; title = `${blockers} blocker${blockers > 1 ? "s" : ""} to resolve`; body = "Fix them or keep the original with a reason before sending."; }
+  else if (inputErrors) { tone = "blocker"; icon = "alertCircle"; title = "Fields to complete"; body = `${inputErrors} required field${inputErrors > 1 ? "s are" : " is"} empty.`; }
+  else if (warnings) { tone = "warning"; icon = "alert"; title = "Ready, with warnings"; body = `No blockers. Decide on ${warnings} warning${warnings > 1 ? "s" : ""} before sending.`; }
+  else { tone = "approved"; icon = "checkCircle"; title = "Ready for review"; body = summary.blocker + summary.warning + summary.suggestion ? "Every blocker and warning has a decision." : "No issues found by any check."; }
+  const s = { blocker: "bg-blocker-soft text-blocker", warning: "bg-warning-soft text-warning", approved: "bg-approved-soft text-approved", teal: "bg-teal-soft text-teal-dark" }[tone];
+  const bar = { blocker: "bg-blocker-vivid", warning: "bg-warning-vivid", approved: "bg-approved-vivid", teal: "bg-teal" }[tone];
+  return (
+    <div className="relative px-4 py-4">
+      <span className={`absolute inset-x-0 top-0 h-1 ${bar}`} aria-hidden />
+      <div className="flex items-start gap-3">
+        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${s}`}><Icon name={icon} className="h-5 w-5" /></span>
+        <div className="min-w-0">
+          <p className="font-semibold">{title}</p>
+          <p className="mt-0.5 text-sm text-muted">{body}</p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -475,15 +578,15 @@ function renderGroups(fields) {
 function FieldInput({ spec, value, locked, errors, prominent, onChange }) {
   const id = `f-${spec.id}`;
   const label = <label className="label" htmlFor={id}>{spec.label}{spec.required ? <span className="text-blocker"> *</span> : <span className="font-normal text-muted"> (optional)</span>}</label>;
-  const err = errors?.length ? <p className="mt-1 text-xs text-blocker">{errors.join(" ")}</p> : null;
-  const cls = `field ${errors?.length ? "border-blocker" : ""}`;
+  const err = errors?.length ? <p className="mt-1.5 text-xs text-blocker">{errors.join(" ")}</p> : null;
+  const cls = `field ${errors?.length ? "border-blocker-vivid" : ""}`;
   const counter = spec.limit ? (
-    <p className={`mt-1 text-right text-xs ${value.length > spec.limit ? "font-semibold text-warning" : "text-muted"}`}>{value.length.toLocaleString("en-IN")} / {spec.limit.toLocaleString("en-IN")}</p>
+    <p className={`mt-1.5 text-right text-xs tabular-nums ${value.length > spec.limit ? "font-semibold text-warning" : "text-muted"}`}>{value.length.toLocaleString("en-IN")} / {spec.limit.toLocaleString("en-IN")}</p>
   ) : null;
   if (spec.type === "longtext" || spec.type === "lines") {
     return (
       <div>{label}
-        <textarea id={id} className={`${cls} ${prominent ? "min-h-[10rem] font-proof text-lg leading-8" : spec.id === "main_text" ? "min-h-[6rem] font-proof" : "min-h-[4.5rem]"}`}
+        <textarea id={id} className={`${cls} ${prominent ? "min-h-[11rem] text-base leading-7" : spec.id === "main_text" ? "min-h-[7rem] text-[15px] leading-6" : "min-h-[4.5rem]"}`}
           value={value} disabled={locked} maxLength={spec.max || 5000} placeholder={spec.placeholder || (spec.type === "lines" ? "One per line" : "")}
           onChange={(e) => onChange(e.target.value)} aria-invalid={!!errors?.length} />
         {counter}{err}
@@ -515,19 +618,21 @@ function MediaInput({ spec, media, used, unused, locked, reading, hasLogo, error
   return (
     <div>
       <p className="label">{spec.label}{spec.required ? <span className="text-blocker"> *</span> : <span className="font-normal text-muted"> (optional)</span>}
-        <span className="font-normal text-muted"> · {used.length} of {spec.max}</span></p>
+        <span className="ml-1.5 font-normal text-muted">{used.length} of {spec.max}</span></p>
       {!locked && !full && (
         <label onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
           onDrop={(e) => { e.preventDefault(); setOver(false); onAdd(e.dataTransfer.files || []); }}
-          className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-4 py-6 text-center text-sm ${over ? "border-suggestion bg-suggestion-soft" : "border-line bg-canvas hover:border-suggestion"} ${reading ? "pointer-events-none opacity-60" : ""}`}>
+          className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed px-4 py-7 text-center text-sm transition-colors ${over ? "border-teal bg-teal-soft" : "border-[#CDD3DC] bg-canvas hover:border-teal hover:bg-teal-soft/40"} ${reading ? "pointer-events-none opacity-70" : ""}`}>
           <input type="file" accept={spec.accept} multiple={spec.max > 1} className="sr-only" disabled={!!reading}
             onChange={(e) => { onAdd(e.target.files || []); e.target.value = ""; }} />
-          <span className="font-medium">{reading ? `Reading ${reading.kind} ${reading.n}… ${reading.pct ? `${reading.pct}%` : ""}` : `Choose ${spec.noun} files or drop them here`}</span>
-          <span className="mt-1 text-xs text-muted">{spec.help}</span>
+          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-teal-dark shadow-sm ring-1 ring-line"><Icon name={reading ? "refresh" : "upload"} className={`h-[18px] w-[18px] ${reading ? "animate-spin" : ""}`} /></span>
+          <span className="mt-3 font-medium">{reading ? `Reading ${reading.kind} ${reading.n}… ${reading.pct ? `${reading.pct}%` : ""}` : <>Drop {spec.noun} files here or <span className="text-teal-dark">browse</span></>}</span>
+          <span className="mt-1 max-w-sm text-xs text-muted">{spec.help}</span>
+          {reading?.pct > 0 && <span className="mt-3 h-1 w-40 overflow-hidden rounded-full bg-white"><span className="block h-full bg-teal transition-all" style={{ width: `${reading.pct}%` }} /></span>}
         </label>
       )}
-      {errors?.length > 0 && <p className="mt-1 text-xs text-blocker">{errors.join(" ")}</p>}
-      {unused > 0 && <p className="mt-2 rounded bg-canvas px-3 py-2 text-xs text-muted">{unused} upload{unused > 1 ? "s are" : " is"} not used by this format. {unused > 1 ? "They are" : "It is"} kept in case you switch back.</p>}
+      {errors?.length > 0 && <p className="mt-1.5 text-xs text-blocker">{errors.join(" ")}</p>}
+      {unused > 0 && <p className="mt-2 rounded-md bg-canvas px-3 py-2 text-xs text-muted">{unused} upload{unused > 1 ? "s are" : " is"} not used by this format. {unused > 1 ? "They are" : "It is"} kept in case you switch back.</p>}
       <div className="mt-3 space-y-3">
         {used.map((m, i) => (
           <MediaCard key={i} n={i + 1} m={m} total={used.length} sequence={spec.max > 1} locked={locked} hasLogo={hasLogo}
@@ -548,43 +653,43 @@ function MediaCard({ n, m, total, sequence, locked, hasLogo, onChange, onRemove,
   const share = m.brand_share != null ? `${Math.round(m.brand_share * 100)}%` : "No brand colours set";
   const logo = !hasLogo ? "No logo in brand kit" : m.logo_score == null ? "Not checked" : m.logo_score >= 0.6 ? "Found" : "Not found";
   return (
-    <div className="rounded-lg border border-line p-3">
-      <div className="flex flex-wrap gap-3">
+    <div className="rounded-lg border border-line bg-white p-4">
+      <div className="flex flex-wrap gap-4">
         {kind === "document"
-          ? <div className="flex h-24 w-20 items-center justify-center rounded border border-line bg-blocker-soft text-xs font-semibold text-blocker">PDF</div>
+          ? <div className="flex h-24 w-20 items-center justify-center rounded-md border border-line bg-blocker-soft text-xs font-semibold text-blocker">PDF</div>
           : m.preview
-            ? <div className="relative"><img src={m.preview} alt={m.alt_text || `Upload ${n}`} className="h-32 w-auto max-w-[45vw] rounded border border-line object-contain sm:max-w-[14rem]" />
-                {kind === "video" && <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 text-xs text-white">▶ {m.duration ? `${m.duration}s` : "video"}</span>}</div>
-            : <div className="flex h-32 w-32 items-center justify-center rounded border border-dashed border-line p-2 text-center text-xs text-muted">No preview saved</div>}
-        <div className="min-w-0 flex-1 space-y-1 text-sm">
-          <p className="font-medium">{sequence ? `${n} of ${total}` : kind.charAt(0).toUpperCase() + kind.slice(1)}: {m.file_name}</p>
+            ? <div className="relative"><img src={m.preview} alt={m.alt_text || `Upload ${n}`} className="h-32 w-auto max-w-[45vw] rounded-md border border-line bg-canvas object-contain sm:max-w-[14rem]" />
+                {kind === "video" && <span className="absolute bottom-1.5 left-1.5 rounded bg-ink/75 px-1.5 text-xs text-white">▶ {m.duration ? `${m.duration}s` : "video"}</span>}</div>
+            : <div className="flex h-32 w-32 items-center justify-center rounded-md border border-dashed border-line p-2 text-center text-xs text-muted">No preview saved</div>}
+        <div className="min-w-0 flex-1 text-sm">
+          <p className="font-medium">{sequence ? `${n} of ${total}` : kind.charAt(0).toUpperCase() + kind.slice(1)}: <span className="break-all font-normal text-muted">{m.file_name}</span></p>
           {kind === "document" ? (
-            <p className="text-muted">{m.pages ? `${m.pages} pages. ` : ""}{m.note || "Its text is checked like the post text."}</p>
+            <p className="mt-1 text-muted">{m.pages ? `${m.pages} pages. ` : ""}{m.note || "Its text is checked like the post text."}</p>
           ) : (
-            <>
-              {m.width && <p><span className="text-muted">Size:</span> {m.width}×{m.height}{kind === "video" ? " · one frame read" : ""}</p>}
-              <p><span className="text-muted">Brand colours:</span> {share}
-                <span className="ml-2 inline-flex gap-1 align-middle">{(m.palette || []).map((c) => <span key={c.hex} title={`${c.hex}, ${Math.round(c.share * 100)}%`} className="inline-block h-3 w-5 rounded border border-line" style={{ background: c.hex }} />)}</span></p>
-              <p><span className="text-muted">Logo:</span> {logo}</p>
-              <p><span className="text-muted">Lowest text contrast:</span> {m.contrast_min ? `${m.contrast_min}:1` : "Not measured"}
-                {m.ocr_confidence != null && <span className="text-muted"> · read with {m.ocr_confidence}% confidence</span>}</p>
-            </>
+            <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
+              {m.width && <><dt className="text-muted">Size</dt><dd>{m.width}×{m.height}{kind === "video" ? ", one frame read" : ""}</dd></>}
+              <dt className="text-muted">Brand colours</dt>
+              <dd className="flex flex-wrap items-center gap-1.5">{share}{(m.palette || []).map((c) => <span key={c.hex} title={`${c.hex}, ${Math.round(c.share * 100)}%`} className="inline-block h-3 w-5 rounded-sm ring-1 ring-line" style={{ background: c.hex }} />)}</dd>
+              <dt className="text-muted">Logo</dt><dd>{logo}</dd>
+              <dt className="text-muted">Lowest contrast</dt>
+              <dd>{m.contrast_min ? `${m.contrast_min}:1` : "Not measured"}{m.ocr_confidence != null && <span className="text-muted">, read with {m.ocr_confidence}% confidence</span>}</dd>
+            </dl>
           )}
           {!locked && (
-            <p className="flex gap-3">
-              {sequence && <><button className="text-suggestion underline disabled:opacity-40" disabled={n === 1} onClick={() => onMove(-1)}>Move up</button>
-                <button className="text-suggestion underline disabled:opacity-40" disabled={n === total} onClick={() => onMove(1)}>Move down</button></>}
-              <button className="text-suggestion underline" onClick={onRemove}>Remove</button>
+            <p className="mt-3 flex flex-wrap gap-1.5">
+              {sequence && <><button className="btn btn-quiet btn-sm" disabled={n === 1} onClick={() => onMove(-1)}>Move up</button>
+                <button className="btn btn-quiet btn-sm" disabled={n === total} onClick={() => onMove(1)}>Move down</button></>}
+              <button className="btn btn-danger btn-sm" onClick={onRemove}>Remove</button>
             </p>
           )}
         </div>
       </div>
-      <div className={`mt-3 grid gap-3 ${kind === "image" ? "sm:grid-cols-2" : ""}`}>
+      <div className={`mt-4 grid gap-4 ${kind === "image" ? "sm:grid-cols-2" : ""}`}>
         <div>
           <label className="label" htmlFor={`txt-${n}`}>{kind === "document" ? "Text read from the PDF" : kind === "video" ? "Text read from the frame" : "Text read from the image"}</label>
           <textarea id={`txt-${n}`} className="field min-h-[4rem]" value={m.text || ""} disabled={locked} maxLength={20000}
             onChange={(e) => onChange({ text: e.target.value })} placeholder="No text found. Type what it says." />
-          <p className="mt-1 text-xs text-muted">Correct any misread words before checking.</p>
+          <p className="mt-1.5 text-xs text-muted">Correct any misread words before checking.</p>
         </div>
         {kind === "image" && (
           <div>
@@ -610,15 +715,15 @@ function AdaptPanel({ cfg, draft, current, onDone }) {
     catch (e) { setError(e.message); } finally { setBusy(false); }
   }
   return (
-    <div className="mt-4 rounded-lg border border-line p-4 text-sm">
+    <div className="text-sm">
       <p className="font-semibold">Create once, adapt everywhere</p>
       <p className="mt-1 text-muted">Pick destinations. Each gets its own linked draft with the same wording and approved claims, restructured for that platform
         (fields moved, hashtags and media kept where the format allows). Wording is not rewritten by AI. Each version is checked on its own and needs its own review.</p>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      <div className="mt-4 grid gap-2 sm:grid-cols-2">
         {cfg.platforms.map((p) => (
-          <label key={p.id} className="flex items-center gap-2">
-            <input type="checkbox" aria-label={`Adapt for ${p.label}`} checked={!!pick[p.id]} onChange={(e) => setPick((c) => ({ ...c, [p.id]: e.target.checked ? (p.id === current.platform ? p.formats.find((f) => f.id !== current.format)?.id : p.formats[0].id) : null }))} />
-            <span className="w-24">{p.label}</span>
+          <label key={p.id} className={`flex items-center gap-3 rounded-md border px-3 py-2 ${pick[p.id] ? "border-teal bg-teal-soft/50" : "border-line"}`}>
+            <input type="checkbox" className="h-4 w-4 accent-[#16B8A6]" aria-label={`Adapt for ${p.label}`} checked={!!pick[p.id]} onChange={(e) => setPick((c) => ({ ...c, [p.id]: e.target.checked ? (p.id === current.platform ? p.formats.find((f) => f.id !== current.format)?.id : p.formats[0].id) : null }))} />
+            <span className="w-24 font-medium">{p.label}</span>
             <select className="field py-1" disabled={!pick[p.id]} value={pick[p.id] || ""} onChange={(e) => setPick((c) => ({ ...c, [p.id]: e.target.value }))}>
               {!pick[p.id] && <option value="">Format</option>}
               {p.formats.filter((f) => !(p.id === current.platform && f.id === current.format)).map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
@@ -626,15 +731,15 @@ function AdaptPanel({ cfg, draft, current, onDone }) {
           </label>
         ))}
       </div>
-      <button className="btn btn-primary mt-3" disabled={busy || targets.length === 0} onClick={go}>{busy ? "Creating versions…" : `Create ${targets.length || ""} version${targets.length === 1 ? "" : "s"}`}</button>
-      {error && <p className="mt-2 text-blocker">{error}</p>}
+      <button className="btn btn-primary mt-4" disabled={busy || targets.length === 0} onClick={go}>{busy ? "Creating versions…" : `Create ${targets.length || ""} version${targets.length === 1 ? "" : "s"}`}</button>
+      {error && <Notice tone="error" className="mt-3">{error}</Notice>}
       {out && (
-        <ul className="mt-3 space-y-2">
+        <ul className="mt-4 space-y-2">
           {out.created.map((c) => (
-            <li key={c.id} className="flex flex-wrap items-center gap-2 rounded bg-canvas px-3 py-2">
+            <li key={c.id} className="flex flex-wrap items-center gap-2 rounded-md bg-canvas px-3 py-2">
               <span className="font-medium">{c.channel}</span>
-              <span className="text-xs text-muted">{c.summary.blocker} blockers · {c.summary.warning} warnings{c.input_errors.length ? ` · ${c.input_errors.length} fields to complete` : ""}</span>
-              <Link href={`/?draft=${c.id}`} className="ml-auto text-suggestion underline">Open</Link>
+              <span className="text-xs text-muted">{c.summary.blocker} blockers, {c.summary.warning} warnings{c.input_errors.length ? `, ${c.input_errors.length} fields to complete` : ""}</span>
+              <Link href={`/?draft=${c.id}`} className="link ml-auto">Open</Link>
             </li>
           ))}
         </ul>
@@ -643,8 +748,14 @@ function AdaptPanel({ cfg, draft, current, onDone }) {
   );
 }
 
-function Count({ n, label, cls }) {
-  return <div><span className={`text-2xl font-semibold ${cls}`}>{n}</span> <span className="text-muted">{label}</span></div>;
+function Count({ n, label, tone }) {
+  const s = { blocker: ["text-blocker", "bg-blocker-vivid"], warning: ["text-warning", "bg-warning-vivid"], suggestion: ["text-suggestion", "bg-suggestion-vivid"] }[tone];
+  return (
+    <div className="border-r border-line px-4 py-3 last:border-r-0">
+      <p className={`text-2xl font-semibold tabular-nums tracking-tight ${n ? s[0] : "text-[#B4BCC8]"}`}>{n}</p>
+      <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted"><span className={`dot h-1.5 w-1.5 ${n ? s[1] : "bg-line"}`} />{label}</p>
+    </div>
+  );
 }
 
 function summarise(findings) {

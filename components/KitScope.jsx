@@ -10,12 +10,12 @@ export default function KitScope({ kit, scope, onScope, brand, onBrand }) {
   return (
     <div className="panel space-y-3 px-4 py-3 text-sm">
       <div className="flex flex-wrap items-center gap-3">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p>
             <span className="text-muted">Brand kit:</span> <span className="font-semibold">{kit.name || "Unnamed brand"}</span>
             {kit.is_demo ? <span className="text-muted"> (demo workspace)</span> : <span className="text-muted"> from {kit.file || "uploaded PDF"}, activated {date}</span>}
           </p>
-          <p className="text-xs text-muted">
+          <p className="mt-0.5 text-xs text-muted">
             {scope === "kit"
               ? `Only posts checked against this kit${kit.hidden_posts ? `; ${kit.hidden_posts} older post${kit.hidden_posts > 1 ? "s" : ""} from other brands hidden` : ""}. Indian ad regulations apply to every brand.`
               : brands.length === 0
@@ -25,10 +25,9 @@ export default function KitScope({ kit, scope, onScope, brand, onBrand }) {
                 : `All ${brands.length} brand${brands.length === 1 ? "" : "s"} together. Pick a brand to see its numbers on their own; rule numbers mean different things in different brands.`}
           </p>
         </div>
-        <div className="ml-auto flex overflow-hidden rounded-md border border-line" role="group" aria-label="Which posts to include">
+        <div className="seg" role="group" aria-label="Which posts to include">
           {[["kit", "This brand kit"], ["all", "All history"]].map(([v, label]) => (
-            <button key={v} onClick={() => { onScope(v); onBrand?.(null); }} aria-pressed={scope === v}
-              className={`px-3 py-1.5 text-sm ${scope === v ? "bg-ink text-white" : "bg-white hover:bg-canvas"}`}>{label}</button>
+            <button key={v} onClick={() => { onScope(v); onBrand?.(null); }} aria-pressed={scope === v} className="seg-item">{label}</button>
           ))}
         </div>
       </div>
@@ -37,7 +36,7 @@ export default function KitScope({ kit, scope, onScope, brand, onBrand }) {
           <Pill active={!brand} onClick={() => onBrand?.(null)}>All brands <span className="opacity-70">{total}</span></Pill>
           {brands.map((b) => (
             <Pill key={b.id} active={brand === b.id} onClick={() => onBrand?.(b.id)}>
-              {b.name}{b.current ? " · current" : ""} <span className="opacity-70">{b.posts}</span>
+              {b.name}{b.current ? ", current" : ""} <span className="opacity-70">{b.posts}</span>
             </Pill>
           ))}
         </div>
@@ -49,6 +48,6 @@ export default function KitScope({ kit, scope, onScope, brand, onBrand }) {
 function Pill({ active, onClick, children }) {
   return (
     <button onClick={onClick} aria-pressed={active}
-      className={`rounded-full border px-3 py-1 text-xs ${active ? "border-ink bg-ink text-white" : "border-line bg-white hover:bg-canvas"}`}>{children}</button>
+      className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${active ? "border-teal bg-teal-soft text-ink" : "border-line bg-white text-muted hover:bg-canvas hover:text-ink"}`}>{children}</button>
   );
 }
