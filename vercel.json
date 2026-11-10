@@ -1,0 +1,6 @@
+{
+  "functions": {
+    "api/index.py": { "includeFiles": "api/_lbc/**", "maxDuration": 30 }
+  },
+  "rewrites": [{ "source": "/api/(.*)", "destination": "/api/index" }]
+}

@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html { -webkit-text-size-adjust: 100%; }
+body { @apply bg-canvas text-ink font-sans antialiased; }
+:focus-visible { outline: 2px solid #2457B5; outline-offset: 2px; }
+
+/* Proof marks: underline colour = severity. Wavy for AI, solid for rule-based. */
+.mark { text-decoration-thickness: 2px; text-underline-offset: 4px; text-decoration-line: underline; cursor: pointer; border-radius: 2px; }
+.mark-blocker { text-decoration-color: #B42318; background: #FDECEA; }
+.mark-warning { text-decoration-color: #9A5B06; background: #FDF3E1; }
+.mark-suggestion { text-decoration-color: #2457B5; background: #E8EFFB; }
+.mark-ai { text-decoration-style: wavy; }
+.mark-active { outline: 2px solid currentColor; }
+.ref { font: 600 10px/1 "IBM Plex Sans", sans-serif; vertical-align: super; margin-left: 1px; }
+
+.btn { @apply inline-flex items-center justify-center gap-1 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed; }
+.btn-primary { @apply bg-ink text-white hover:bg-[#24355A]; }
+.btn-quiet { @apply border border-line bg-white text-ink hover:bg-canvas; }
+.btn-approve { @apply bg-approved text-white hover:brightness-110; }
+.btn-danger { @apply border border-blocker text-blocker bg-white hover:bg-blocker-soft; }
+.field { @apply w-full rounded-md border border-line bg-white px-3 py-2 text-sm text-ink placeholder:text-muted focus:border-suggestion focus:outline-none; }
+.label { @apply block text-sm font-medium text-ink mb-1; }
+.panel { @apply rounded-lg border border-line bg-sheet; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
