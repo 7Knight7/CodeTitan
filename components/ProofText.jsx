@@ -23,7 +23,7 @@ export default function ProofText({ text, findings, activeId, onSelect, resolved
     pos = m.end;
   }
   if (pos < text.length) parts.push(<span key={`t${pos}`}>{text.slice(pos)}</span>);
-  return <p className="whitespace-pre-wrap font-proof text-[1.15rem] leading-9">{parts.length ? parts : text}</p>;
+  return <p className="whitespace-pre-wrap text-[15px] leading-8 text-ink">{parts.length ? parts : text}</p>;
 }
 
 export const keyOf = (f) => `${f.rule_id}|${f.quote}|${f.location}`;
