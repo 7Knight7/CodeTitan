@@ -77,6 +77,12 @@ export default function ReviewPage() {
           {isCreator && (
             <Notice tone="info">You are acting as the creator. Switch to Arjun or Meera from the account menu to approve posts.</Notice>
           )}
+          {person?.role === "Reviewer" && loaded && queue.every((d) => d.requires_senior) && (
+            <Notice tone="info">
+              {queue.length ? "The only post waiting needs the marketing head. " : "Nothing is waiting for you. "}
+              To have one to approve, open the <Link href="/overview" className="font-medium text-teal-dark underline">guided demo</Link> and run step 2, or send any post from the content checker as Priya.
+            </Notice>
+          )}
           {isCreator && mustDo.length > 0 && (
             <div role="alert" className="overflow-hidden rounded-lg border border-blocker-vivid/40 bg-white">
               <p className="flex items-center gap-2 bg-blocker-soft px-4 py-2.5 text-sm font-semibold text-blocker"><Icon name="alertCircle" className="h-4 w-4" />Must do now: {mustDo.length} post{mustDo.length > 1 ? "s" : ""} sent back to you</p>

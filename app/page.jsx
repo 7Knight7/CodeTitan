@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api, draftsChanged, STATUS_LABEL } from "@/lib/api";
 import { useRole } from "@/components/RoleProvider";
@@ -11,6 +11,7 @@ import BrandFitBanner from "@/components/BrandFitBanner";
 import { MemoryTips } from "@/components/BrandMemory";
 import Icon from "@/components/Icon";
 import { Card, Notice, PageHeader, StatusChip } from "@/components/ui";
+import ExamplePicker, { EXAMPLES } from "@/components/Examples";
 
 const MAX_MEDIA = 10;
 const LEGACY = { // posts saved before platforms existed
@@ -29,8 +30,11 @@ export default function Page() {
 function WritePage() {
   const router = useRouter();
   const params = useSearchParams();
-  const { person } = useRole();
+  const { person, setRole } = useRole();
   const [ws, setWs] = useState(null);
+  const [schemaKey, setSchemaKey] = useState(""); // which platform/format/context the loaded schema is for
+  const [pending, setPending] = useState(null); // a ready-made example being filled in and checked
+  const autoRan = useRef(false);
   const [cfg, setCfg] = useState(null);
   const [title, setTitle] = useState("New post");
   const [platform, setPlatform] = useState("instagram");
@@ -73,7 +77,7 @@ function WritePage() {
     let live = true;
     const q = `platform=${platform}&format=${format}&context=${context}`;
     Promise.all([api(`/input-schema?${q}`), api(`/validation-profile?${q}`)])
-      .then(([s, p]) => { if (live) { setSchema(s); setProfile(p); } })
+      .then(([s, p]) => { if (live) { setSchema(s); setProfile(p); setSchemaKey(`${platform}/${format}/${context}`); } })
       .catch((e) => live && setError(e.message));
     return () => { live = false; };
   }, [platform, format, context]);
@@ -212,6 +216,50 @@ function WritePage() {
     router.replace("/", { scroll: false });
   }
 
+  // Ready-made examples: fill the composer like a person would, then run the same check.
+  function runExample(ex) {
+    setDraft(null); setResult(null); setActiveId(null); setTab("edit"); setAdaptOpen(false);
+    setError(""); setNotice(""); setSendError("");
+    setTitle(ex.title); setPlatform(ex.platform); setFormat(ex.format); setContext(ex.context);
+    setFields({ ...(ex.fields || {}), main_text: ex.caption || "" });
+    setMedia([]);
+    router.replace("/", { scroll: false });
+    setPending({ ex, stage: ex.image ? "media" : "check" });
+  }
+
+  useEffect(() => {
+    if (!pending) return;
+    const { ex, stage } = pending;
+    if (!schema || schemaKey !== `${ex.platform}/${ex.format}/${ex.context}`) return; // wait for this format's fields
+    if (stage === "media") {
+      setPending({ ex, stage: "loading" });
+      fetch(`/samples/${ex.image}`)
+        .then((r) => { if (!r.ok) throw new Error(); return r.blob(); })
+        .then((b) => addMedia([new File([b], ex.image, { type: b.type || "image/jpeg" })]))
+        .catch(() => setError("The sample image could not be loaded. Upload your own image or try another example."))
+        .finally(() => setPending((p) => p && p.ex.id === ex.id ? { ex, stage: "alt" } : p));
+      return;
+    }
+    if (stage === "loading" || reading) return;
+    if (stage === "alt") {
+      if (ex.alt) setMedia((cur) => cur.map((m) => ({ ...m, alt_text: m.alt_text || ex.alt })));
+      setPending({ ex, stage: "check" });
+      return;
+    }
+    if (stage === "check") { setPending(null); check(); }
+  }, [pending, schema, schemaKey, reading]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A link such as /?example=claims (used by the guided demo) runs that example once the page is ready.
+  useEffect(() => {
+    const id = params.get("example");
+    if (!id || autoRan.current || !cfg || !ws || !person) return;
+    const ex = EXAMPLES.find((x) => x.id === id);
+    if (!ex) return;
+    if (!canAct) { setPlatform(ex.platform); setFormat(ex.format); setContext(ex.context); return; }
+    autoRan.current = true;
+    runExample(ex);
+  }, [params, cfg, ws, person, canAct]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const findings = result?.findings || [];
   const inputErrors = result?.input_errors || [];
   const errorsByField = useMemo(() => {
@@ -239,6 +287,10 @@ function WritePage() {
 
         {noKit && <Notice tone="warning">No brand kit is live yet, so posts can&rsquo;t be checked. The marketing head must upload the brand kit in Brand guidelines first.</Notice>}
         {notCreator && <Notice tone="info">You are signed in as {person.name}. You can try platforms, formats and the preview here, but only creators check and send posts. Switch to Priya from the account menu in the top right.</Notice>}
+        <ExamplePicker onRun={runExample} running={pending?.ex.id || (busy ? "busy" : null)}
+          canRun={canAct} defaultOpen={!params.get("draft")} brand={ws?.meta?.name}
+          blockedReason={noKit ? "No brand kit is live, so examples can't be checked. The marketing head can restore the demo brand in Brand guidelines." : "Only creators check posts. Switch to Priya to run an example."}
+          onSwitch={notCreator && !noKit ? () => setRole("Creator") : null} />
         {draft && (
           <div className="panel flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 text-sm">
             <StatusChip status={draft.status} />
