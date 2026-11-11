@@ -6,14 +6,22 @@ Team RaaGa: B.V. Sri Gautam and K. Sai Rajasree.
 
 ## Try it (judges)
 
-Demo access needs no password: choose who you are on the sign-in page (you can switch later from the header).
+**Live demo: https://live-brand-check.vercel.app**
 
-1. **Meera (marketing head) → Brand workspace.** Upload a brand guideline PDF (a fictional sample is in `tests/fixtures/sunrise_brand_book.pdf`). Check what was read (name, colours, banned words, tone, positioning, required text, facts with dates, what the brand talks about), edit anything, then activate it.
-2. **Priya (social media) → Write and check.** Pick the platform, format and context (organic, sponsored, paid partnership, influencer, promotional offer), upload up to 5 images and add a caption, then press **Check post**.
-3. If the post doesn't match the brand (wrong name, off-brand colours, another brand's name, unrelated topics, unapproved offers), a big red **"NO: this is not a post for {brand}"** banner explains why. Other issues are listed by layer with why, the source and a suggested fix: **Accept**, **Edit**, or **Keep original** with a reason.
-4. When no blockers remain, press **Send for review**.
-5. Switch to **Arjun (brand reviewer) → Review** and approve or request changes. Priya sees change requests in a note on every page.
-6. Open **History**, **Insights** and **Analytics**, and the **Brand memory** section of Brand workspace to see what the app has learned.
+No password and no setup: a sample brand kit (Northstar Civils Academy, fictional) is already loaded. Choose who you are on the sign-in page; you can switch person any time from the account menu in the top right.
+
+**Guided demo.** After signing in you land on **Overview**, where six steps walk you through the product. Each step switches to the right person and opens the right screen:
+
+1. See what gets caught: a post full of risky claims, each issue underlined with its source.
+2. Fix a post in one click (**Accept fix** adds `#ad`) and **Send for review**.
+3. Approve it as **Arjun (brand reviewer)**.
+4. See a sensitive post (a festival greeting) that only **Meera (marketing head)** can approve.
+5. Spot repeated mistakes in **Insights** and **Analytics**.
+6. Import a brand kit from a PDF: **Read the sample PDF** in one click, review what was read, and activate it.
+
+**Ready-made examples.** **Content checker** has nine one-click examples: claims that break ad rules, a fee and results not on record, a paid post without `#ad`, a banner with problems (its text is read in your browser), a post for another brand, a health claim, an offer that has ended, a festival greeting, and a post that is ready to send. Each one fills in a real post and runs the real check.
+
+**Your own input.** Everything also works by hand: write any post, upload your own images, or import your own brand-kit PDF in **Brand guidelines**. **Start the demo over** (on Overview) restores the sample data.
 
 Posts on sensitive topics can only be approved by Meera. Nobody can approve their own post. Demo data is fictional.
 
