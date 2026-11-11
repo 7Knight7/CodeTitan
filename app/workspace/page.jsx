@@ -190,8 +190,8 @@ export default function WorkspacePage() {
         </div>
         {ws.live && canEdit && (
           <ul className="grid gap-px border-t border-line bg-line text-sm sm:grid-cols-2">
-            <li className="bg-white px-5 py-3"><span className="font-medium">Update</span><span className="text-muted">: edit this kit or upload a revised PDF of the same brand. Posts, reviews and insights are kept; open posts are checked again.</span></li>
-            <li className="bg-white px-5 py-3"><span className="font-medium text-blocker">Reset</span><span className="text-muted">: for a different brand. Removes this kit and clears Write and Review for everyone; this brand&rsquo;s posts stay as read-only history in Analytics and Insights.</span></li>
+            <li className="bg-surface px-5 py-3"><span className="font-medium">Update</span><span className="text-muted">: edit this kit or upload a revised PDF of the same brand. Posts, reviews and insights are kept; open posts are checked again.</span></li>
+            <li className="bg-surface px-5 py-3"><span className="font-medium text-blocker">Reset</span><span className="text-muted">: for a different brand. Removes this kit and clears Write and Review for everyone; this brand&rsquo;s posts stay as read-only history in Analytics and Insights.</span></li>
           </ul>
         )}
       </section>
@@ -208,11 +208,11 @@ export default function WorkspacePage() {
           sub={mode === "update" ? "Use this when the brand published a new version of its guidelines. It replaces the editor below; you can also just edit the live kit there."
             : !ws.live && !ws.empty ? "The sample brand is already loaded, so this step isn't needed. To see how importing works, read the sample PDF in one click, or upload your own."
             : "The app reads the PDF, then you confirm every item before it goes live."}>
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div className="grid gap-6 xl:grid-cols-2">
             <div>
               {!ws.live && (
                 <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-teal/40 bg-teal-soft/50 p-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-white text-teal-dark ring-1 ring-line"><Icon name="file" className="h-5 w-5" /></span>
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-surface text-teal-dark ring-1 ring-line"><Icon name="file" className="h-5 w-5" /></span>
                   <div className="min-w-0 flex-1 text-sm">
                     <p className="font-medium">Sample brand-kit PDF</p>
                     <p className="text-xs text-muted">Sunrise Tutorials, a fictional tuition brand. You review what the app read before anything goes live.</p>
@@ -221,9 +221,9 @@ export default function WorkspacePage() {
                 </div>
               )}
               {!ws.live && !ws.empty && ws.post_count > 0 && <Notice tone="warning" className="mb-3">Activating another brand kit moves the sample posts to history. You can bring the sample brand back any time with &ldquo;Restore the demo brand&rdquo;.</Notice>}
-              <label className={`flex cursor-pointer flex-col items-center rounded-lg border border-dashed border-[#CDD3DC] bg-canvas px-4 py-8 text-center text-sm transition-colors hover:border-teal hover:bg-teal-soft/40 ${busy ? "pointer-events-none opacity-70" : ""}`}>
+              <label className={`flex cursor-pointer flex-col items-center rounded-lg border border-dashed border-line-strong bg-canvas px-4 py-8 text-center text-sm transition-colors hover:border-teal hover:bg-teal-soft/40 ${busy ? "pointer-events-none opacity-70" : ""}`}>
                 <input type="file" accept="application/pdf" className="sr-only" onChange={(e) => { uploadPdf(e.target.files?.[0]); e.target.value = ""; }} />
-                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-teal-dark shadow-sm ring-1 ring-line"><Icon name={busy ? "refresh" : "upload"} className={`h-[18px] w-[18px] ${busy ? "animate-spin" : ""}`} /></span>
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-surface text-teal-dark shadow-sm ring-1 ring-line"><Icon name={busy ? "refresh" : "upload"} className={`h-[18px] w-[18px] ${busy ? "animate-spin" : ""}`} /></span>
                 <span className="mt-3 font-medium">{busy || <>Drop the brand guideline PDF or <span className="text-teal-dark">browse</span></>}</span>
                 <span className="mt-1 text-xs text-muted">PDF with real text, up to 3 MB. {kitInfo?.ai_reader ? "Read with AI and the pattern reader." : "Read with the pattern reader (AI reading is off)."}</span>
               </label>
@@ -273,7 +273,7 @@ export default function WorkspacePage() {
                   {kit.brand_name?.quote && <Src item={kit.brand_name} />}
                 </div>
                 <label className="flex items-center gap-2.5 self-end rounded-md border border-line px-3 py-2.5 text-sm">
-                  <input type="checkbox" className="h-4 w-4 accent-[#16B8A6]" checked={!!kit.logo_required?.value} onChange={(e) => set("logo_required", { ...(kit.logo_required || {}), value: e.target.checked })} />
+                  <input type="checkbox" className="h-4 w-4 accent-teal" checked={!!kit.logo_required?.value} onChange={(e) => set("logo_required", { ...(kit.logo_required || {}), value: e.target.checked })} />
                   Logo must appear on every image
                 </label>
               </div>
@@ -295,7 +295,7 @@ export default function WorkspacePage() {
                   </li>
                 ))}
                 <li>
-                  <button className="flex h-full min-h-[5.5rem] w-full items-center justify-center gap-2 rounded-lg border border-dashed border-[#CDD3DC] text-sm text-muted transition-colors hover:border-teal hover:text-teal-dark"
+                  <button className="flex h-full min-h-[5.5rem] w-full items-center justify-center gap-2 rounded-lg border border-dashed border-line-strong text-sm text-muted transition-colors hover:border-teal hover:text-teal-dark"
                     onClick={() => set("colours", [...(kit.colours || []), { name: "New colour", hex: "#000000" }])}><Icon name="plus" className="h-4 w-4" />Add colour</button>
                 </li>
               </ul>
@@ -558,7 +558,7 @@ function DangerDialog({ title, items, note, confirmWord, action, onCancel, onCon
   }, [onCancel]);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy/50 p-4 backdrop-blur-[2px]" role="presentation" onClick={onCancel}>
-      <div role="alertdialog" aria-modal="true" aria-labelledby="danger-title" className="pop-in w-full max-w-md overflow-hidden rounded-lg bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+      <div role="alertdialog" aria-modal="true" aria-labelledby="danger-title" className="pop-in w-full max-w-md overflow-hidden rounded-lg bg-surface shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="p-5">
           <span className="flex h-10 w-10 items-center justify-center rounded-full bg-blocker-soft text-blocker"><WarningIcon /></span>
           <h2 id="danger-title" className="mt-4 text-lg font-semibold">{title}</h2>
@@ -570,7 +570,7 @@ function DangerDialog({ title, items, note, confirmWord, action, onCancel, onCon
         </div>
         <div className="flex justify-end gap-2 border-t border-line bg-canvas px-5 py-3">
           <button className="btn btn-quiet" onClick={onCancel}>Cancel</button>
-          <button className="btn bg-blocker text-white hover:bg-[#A63A3C]" disabled={!ok} onClick={onConfirm}>{action}</button>
+          <button className="btn bg-blocker-vivid text-white hover:opacity-90" disabled={!ok} onClick={onConfirm}>{action}</button>
         </div>
       </div>
     </div>

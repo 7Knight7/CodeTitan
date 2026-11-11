@@ -10,7 +10,7 @@ import PostPreview from "@/components/PostPreview";
 import BrandFitBanner from "@/components/BrandFitBanner";
 import { MemoryTips } from "@/components/BrandMemory";
 import Icon from "@/components/Icon";
-import { Card, Notice, PageHeader, StatusChip } from "@/components/ui";
+import { Card, Notice, PageHeader, ScoreRing, StatusChip } from "@/components/ui";
 import ExamplePicker, { EXAMPLES } from "@/components/Examples";
 import { useTour } from "@/components/Tour";
 
@@ -326,8 +326,8 @@ function WritePage() {
                       const on = platform === p.id;
                       return (
                         <button key={p.id} type="button" role="radio" aria-checked={on} onClick={() => choosePlatform(p.id)}
-                          className={`flex flex-auto items-center gap-2.5 rounded-md border py-2 pl-2 pr-3.5 text-left text-sm transition-colors disabled:cursor-not-allowed sm:flex-none ${on ? "border-teal bg-teal-soft font-medium text-ink ring-1 ring-teal" : "border-line bg-white text-ink hover:border-[#CDD3DC] hover:bg-canvas"}`}>
-                          <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${on ? "bg-white text-teal-dark" : "bg-canvas text-muted"}`}>
+                          className={`flex flex-auto items-center gap-2.5 rounded-md border py-2 pl-2 pr-3.5 text-left text-sm transition-colors disabled:cursor-not-allowed sm:flex-none ${on ? "border-teal bg-teal-soft font-medium text-ink ring-1 ring-teal" : "border-line bg-surface text-ink hover:border-line-strong hover:bg-canvas"}`}>
+                          <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${on ? "bg-surface text-teal-dark" : "bg-canvas text-muted"}`}>
                             <Icon name={PLATFORM_ICON[p.id] || "globe"} className="h-4 w-4" />
                           </span>
                           <span className="whitespace-nowrap">{p.label}</span>
@@ -528,17 +528,12 @@ function WritePage() {
                   );
                 })}
               </ul>
-              {(summary.checks_run > 0 || summary.sensitive) && (
-                <div className="space-y-2 border-t border-line px-4 py-3">
-                  {summary.checks_run > 0 && (
-                    <div className="flex items-center gap-3 text-xs">
-                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-canvas"><div className="h-full rounded-full bg-approved-vivid" style={{ width: `${(summary.checks_passed / summary.checks_run) * 100}%` }} /></div>
-                      <span className="text-muted"><span className="font-semibold text-approved">{summary.checks_passed} of {summary.checks_run}</span> checks passed</span>
-                    </div>
-                  )}
-                  {summary.sensitive && <Notice tone="sensitive">Sensitive topic: only the marketing head can approve this post.</Notice>}
-                </div>
+              {summary.checks_run > 0 && (
+                <p className="border-t border-line px-4 py-2.5 text-xs text-muted">
+                  <span className="font-semibold text-approved">{summary.checks_passed} of {summary.checks_run}</span> checks passed
+                </p>
               )}
+              {summary.sensitive && <div className="border-t border-line px-4 py-3"><Notice tone="sensitive">Sensitive topic: only the marketing head can approve this post.</Notice></div>}
               {draft && !locked && canAct && (
                 <div className="border-t border-line bg-canvas/60 p-4" data-tour="send">
                   <button className="btn btn-teal w-full" disabled={busy || openBlockerList.length > 0} onClick={submit}>
@@ -559,6 +554,21 @@ function WritePage() {
 
             <BrandFitBanner fit={summary.brand_fit} />
 
+            {summary.passed?.length > 0 && (
+              <details className="panel group overflow-hidden">
+                <summary className="flex cursor-pointer list-none items-center gap-2.5 px-5 py-3.5 text-sm font-semibold marker:hidden hover:bg-surface/40">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-approved-soft text-approved"><Icon name="check" className="h-3.5 w-3.5" strokeWidth={2.2} /></span>
+                  Passed checks <span className="chip py-0">{summary.passed.length}</span>
+                  <Icon name="chevronDown" className="ml-auto h-4 w-4 text-muted transition-transform group-open:rotate-180" />
+                </summary>
+                <ul className="max-h-64 space-y-1.5 overflow-y-auto border-t border-line px-5 py-3 text-sm">
+                  {summary.passed.map((p, i) => (
+                    <li key={i} className="flex items-start gap-2"><Icon name="check" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-approved" />
+                      <span className="min-w-0">{p.name}<span className="block text-xs text-muted">{p.location === "caption" ? "Caption" : p.location}</span></span></li>
+                  ))}
+                </ul>
+              </details>
+            )}
             {result.verified?.length > 0 && (
               <Card title={<span className="inline-flex items-center gap-2 text-approved"><Icon name="checkCircle" className="h-4 w-4" />Matches approved facts</span>} bodyClass="px-5 py-3">
                 <ul className="space-y-2 text-sm">{result.verified.map((v, i) => <li key={i}>&ldquo;{v.quote}&rdquo; <span className="block text-xs text-muted">{v.location}: matches {v.fact_id}, {v.label}</span></li>)}</ul>
@@ -609,16 +619,20 @@ function ResultVerdict({ locked, draft, blockers, warnings, inputErrors, summary
   else { tone = "approved"; icon = "checkCircle"; title = "Ready for review"; body = summary.blocker + summary.warning + summary.suggestion ? "Every blocker and warning has a decision." : "No issues found by any check."; }
   const s = { blocker: "bg-blocker-soft text-blocker", warning: "bg-warning-soft text-warning", approved: "bg-approved-soft text-approved", teal: "bg-teal-soft text-teal-dark" }[tone];
   const bar = { blocker: "bg-blocker-vivid", warning: "bg-warning-vivid", approved: "bg-approved-vivid", teal: "bg-teal" }[tone];
+  // The ring is the share of checks that passed: a real count from the server, never an estimate.
+  const pct = summary.checks_run > 0 ? Math.round((summary.checks_passed / summary.checks_run) * 100) : null;
   return (
-    <div className="relative px-4 py-4">
+    <div className="relative px-5 py-5">
       <span className={`absolute inset-x-0 top-0 h-1 ${bar}`} aria-hidden />
-      <div className="flex items-start gap-3">
-        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${s}`}><Icon name={icon} className="h-5 w-5" /></span>
-        <div className="min-w-0">
-          <p className="font-semibold">{title}</p>
-          <p className="mt-0.5 text-sm text-muted">{body}</p>
+      <div className="flex items-center gap-4">
+        <div className="min-w-0 flex-1">
+          <span className={`inline-flex h-8 w-8 items-center justify-center rounded-full ${s}`}><Icon name={icon} className="h-4 w-4" /></span>
+          <p className="mt-2.5 text-lg font-semibold leading-snug tracking-tight">{title}</p>
+          <p className="mt-1 text-sm leading-6 text-muted">{body}</p>
         </div>
+        {pct !== null && <ScoreRing pct={pct} size={92} stroke={8} tone={tone === "teal" ? "accent" : tone} sub="checks passed" />}
       </div>
+      <p className="mt-3 flex items-center gap-1.5 text-2xs text-muted"><Icon name="shield" className="h-3 w-3" />Automatic checks suggest. A reviewer makes the final decision.</p>
     </div>
   );
 }
@@ -680,13 +694,13 @@ function MediaInput({ spec, media, used, unused, locked, reading, hasLogo, error
       {!locked && !full && (
         <label onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
           onDrop={(e) => { e.preventDefault(); setOver(false); onAdd(e.dataTransfer.files || []); }}
-          className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed px-4 py-7 text-center text-sm transition-colors ${over ? "border-teal bg-teal-soft" : "border-[#CDD3DC] bg-canvas hover:border-teal hover:bg-teal-soft/40"} ${reading ? "pointer-events-none opacity-70" : ""}`}>
+          className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed px-4 py-7 text-center text-sm transition-colors ${over ? "border-teal bg-teal-soft" : "border-line-strong bg-canvas hover:border-teal hover:bg-teal-soft/40"} ${reading ? "pointer-events-none opacity-70" : ""}`}>
           <input type="file" accept={spec.accept} multiple={spec.max > 1} className="sr-only" disabled={!!reading}
             onChange={(e) => { onAdd(e.target.files || []); e.target.value = ""; }} />
-          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-teal-dark shadow-sm ring-1 ring-line"><Icon name={reading ? "refresh" : "upload"} className={`h-[18px] w-[18px] ${reading ? "animate-spin" : ""}`} /></span>
+          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-surface text-teal-dark shadow-sm ring-1 ring-line"><Icon name={reading ? "refresh" : "upload"} className={`h-[18px] w-[18px] ${reading ? "animate-spin" : ""}`} /></span>
           <span className="mt-3 font-medium">{reading ? `Reading ${reading.kind} ${reading.n}… ${reading.pct ? `${reading.pct}%` : ""}` : <>Drop {spec.noun} files here or <span className="text-teal-dark">browse</span></>}</span>
           <span className="mt-1 max-w-sm text-xs text-muted">{spec.help}</span>
-          {reading?.pct > 0 && <span className="mt-3 h-1 w-40 overflow-hidden rounded-full bg-white"><span className="block h-full bg-teal transition-all" style={{ width: `${reading.pct}%` }} /></span>}
+          {reading?.pct > 0 && <span className="mt-3 h-1 w-40 overflow-hidden rounded-full bg-surface"><span className="block h-full bg-teal transition-all" style={{ width: `${reading.pct}%` }} /></span>}
         </label>
       )}
       {errors?.length > 0 && <p className="mt-1.5 text-xs text-blocker">{errors.join(" ")}</p>}
@@ -711,7 +725,7 @@ function MediaCard({ n, m, total, sequence, locked, hasLogo, onChange, onRemove,
   const share = m.brand_share != null ? `${Math.round(m.brand_share * 100)}%` : "No brand colours set";
   const logo = !hasLogo ? "No logo in brand kit" : m.logo_score == null ? "Not checked" : m.logo_score >= 0.6 ? "Found" : "Not found";
   return (
-    <div className="rounded-lg border border-line bg-white p-4">
+    <div className="rounded-lg border border-line bg-surface p-4">
       <div className="flex flex-wrap gap-4">
         {kind === "document"
           ? <div className="flex h-24 w-20 items-center justify-center rounded-md border border-line bg-blocker-soft text-xs font-semibold text-blocker">PDF</div>
@@ -780,7 +794,7 @@ function AdaptPanel({ cfg, draft, current, onDone }) {
       <div className="mt-4 grid gap-2 sm:grid-cols-2">
         {cfg.platforms.map((p) => (
           <label key={p.id} className={`flex items-center gap-3 rounded-md border px-3 py-2 ${pick[p.id] ? "border-teal bg-teal-soft/50" : "border-line"}`}>
-            <input type="checkbox" className="h-4 w-4 accent-[#16B8A6]" aria-label={`Adapt for ${p.label}`} checked={!!pick[p.id]} onChange={(e) => setPick((c) => ({ ...c, [p.id]: e.target.checked ? (p.id === current.platform ? p.formats.find((f) => f.id !== current.format)?.id : p.formats[0].id) : null }))} />
+            <input type="checkbox" className="h-4 w-4 accent-teal" aria-label={`Adapt for ${p.label}`} checked={!!pick[p.id]} onChange={(e) => setPick((c) => ({ ...c, [p.id]: e.target.checked ? (p.id === current.platform ? p.formats.find((f) => f.id !== current.format)?.id : p.formats[0].id) : null }))} />
             <span className="w-24 font-medium">{p.label}</span>
             <select className="field py-1" disabled={!pick[p.id]} value={pick[p.id] || ""} onChange={(e) => setPick((c) => ({ ...c, [p.id]: e.target.value }))}>
               {!pick[p.id] && <option value="">Format</option>}
@@ -810,7 +824,7 @@ function Count({ n, label, tone }) {
   const s = { blocker: ["text-blocker", "bg-blocker-vivid"], warning: ["text-warning", "bg-warning-vivid"], suggestion: ["text-suggestion", "bg-suggestion-vivid"] }[tone];
   return (
     <div className="border-r border-line px-4 py-3 last:border-r-0">
-      <p className={`text-2xl font-semibold tabular-nums tracking-tight ${n ? s[0] : "text-[#B4BCC8]"}`}>{n}</p>
+      <p className={`text-2xl font-semibold tabular-nums tracking-tight ${n ? s[0] : "text-faint"}`}>{n}</p>
       <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted"><span className={`dot h-1.5 w-1.5 ${n ? s[1] : "bg-line"}`} />{label}</p>
     </div>
   );

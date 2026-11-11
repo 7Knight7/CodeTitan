@@ -5,7 +5,7 @@ import { useState } from "react";
 export default function PostPreview({ layout, platform, format, context, contextLabel, brand = "Your brand", text = "", fields = {}, media = [] }) {
   const props = { platform, format, context, contextLabel, brand, text, fields, media };
   return (
-    <div>
+    <div className="theme-light">
       {layout === "text" && <LinkedIn {...props} />}
       {layout === "visual" && <Instagram {...props} />}
       {layout === "social" && <Facebook {...props} />}
