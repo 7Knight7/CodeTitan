@@ -7,6 +7,7 @@ import BrandFitBanner from "@/components/BrandFitBanner";
 import { useRole } from "@/components/RoleProvider";
 import Icon from "@/components/Icon";
 import { Card, Notice, StatusChip } from "@/components/ui";
+import { useTour } from "@/components/Tour";
 
 function VersionImages({ images }) {
   if (images === null || images === undefined) {
@@ -47,6 +48,7 @@ export default function HistoryPage({ params }) {
   const [error, setError] = useState("");
   const [shown, setShown] = useState(null);
   const { person } = useRole();
+  useTour("history", !!d);
   useEffect(() => { api(`/drafts/${params.id}`).then((x) => { setD(x); setShown(x.version); }).catch((e) => setError(e.message)); }, [params.id]);
   if (error) return <Notice tone="error" role="alert">{error}</Notice>;
   if (!d) return <div className="space-y-4"><div className="skeleton h-8 w-72" /><div className="grid gap-6 lg:grid-cols-2"><div className="skeleton h-80" /><div className="skeleton h-80" /></div></div>;
@@ -74,7 +76,7 @@ export default function HistoryPage({ params }) {
         </Notice>
       )}
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-        <section className="panel min-w-0">
+        <section className="panel min-w-0" data-tour="versions">
           <div className="border-b border-line px-5 py-3.5">
             <h2 className="section-title">Versions</h2>
             <div className="mt-3 flex flex-wrap gap-1.5" role="tablist" aria-label="Versions">
@@ -112,7 +114,7 @@ export default function HistoryPage({ params }) {
             )}
           </div>
         </section>
-        <Card title="Audit history" sub="Every save and decision, oldest first. Nothing here can be edited.">
+        <Card tour="audit" title="Audit history" sub="Every save and decision, oldest first. Nothing here can be edited.">
           <ol className="relative space-y-5">
             <span className="absolute bottom-2 left-[13px] top-2 w-px bg-line" aria-hidden />
             {d.events.map((e) => {

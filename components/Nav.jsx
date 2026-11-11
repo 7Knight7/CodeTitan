@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { canSee, homeFor, ROLES, useRole } from "./RoleProvider";
 import Icon, { Logo } from "./Icon";
 import Notifications from "./CreatorNotes";
+import { TourHelp } from "./Tour";
 
 export { Logo };
 
@@ -105,7 +106,7 @@ function SidebarBody({ path, person, workspace, collapsed, onToggle, onNavigate,
         </div>
       )}
 
-      <nav className={`flex-1 overflow-y-auto ${collapsed ? "px-2" : "px-3"}`} aria-label="Main">
+      <nav className={`flex-1 overflow-y-auto ${collapsed ? "px-2" : "px-3"}`} aria-label="Main" data-tour="nav">
         {!person && [0, 1, 2, 3].map((i) => <span key={i} className="mx-2 my-3 block h-3 rounded bg-white/5" aria-hidden />)}
         {links.map((l, i) => (
           <div key={l.href}>
@@ -190,7 +191,7 @@ function TopBar({ path, person, setRole, signOut, workspace, onMenu, menuOpen })
   return (
     <header className="sticky top-0 z-20 border-b border-line bg-white/85 backdrop-blur-md">
       <div className="flex h-14 items-center gap-3 px-4 sm:px-6 lg:px-8">
-        <button onClick={onMenu} aria-label="Open menu" aria-expanded={menuOpen}
+        <button onClick={onMenu} aria-label="Open menu" aria-expanded={menuOpen} data-tour="menu-button"
           className="-ml-1.5 rounded-md p-1.5 text-muted hover:bg-canvas hover:text-ink lg:hidden">
           <Icon name="menu" className="h-5 w-5" />
         </button>
@@ -208,11 +209,12 @@ function TopBar({ path, person, setRole, signOut, workspace, onMenu, menuOpen })
           </ol>
         </nav>
         <div className="flex items-center gap-1">
+          <TourHelp />
           <Notifications />
           {person && (
             <AccountMenu person={person} setRole={setRole} signOut={signOut}
               trigger={({ toggle, open }) => (
-                <button onClick={toggle} aria-expanded={open} aria-haspopup="menu" aria-label={`Account: ${person.name}`}
+                <button onClick={toggle} aria-expanded={open} aria-haspopup="menu" aria-label={`Account: ${person.name}`} data-tour="account"
                   className="ml-1 flex items-center gap-2 rounded-full p-0.5 pr-0.5 transition-colors hover:bg-canvas sm:pr-2.5">
                   <Avatar name={person.name} />
                   <span className="hidden text-left leading-tight sm:block">

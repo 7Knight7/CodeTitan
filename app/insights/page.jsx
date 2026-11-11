@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 import KitScope from "@/components/KitScope";
 import Icon from "@/components/Icon";
 import { Card, EmptyState, Notice, PageHeader } from "@/components/ui";
+import { useTour } from "@/components/Tour";
 
 const GROUP_INFO = {
   Regulation: "Indian advertising rules (ASCI, CCPA, Drugs and Magic Remedies Act). Always on, whatever the brand or industry.",
@@ -24,6 +25,7 @@ export default function InsightsPage() {
     api(`/insights?scope=${scope}${brand ? `&brand=${encodeURIComponent(brand)}` : ""}`).then(setD).catch((e) => setError(e.message));
   }, [scope, brand]);
 
+  useTour("insights", !!d);
   const max = d ? Math.max(1, ...d.rules.map((r) => r.raised)) : 1;
   const flagged = d ? d.rules.filter((r) => r.needs_review) : [];
   const groups = d ? d.groups.filter((g) => d.rules.some((r) => r.group === g)) : [];
@@ -32,7 +34,7 @@ export default function InsightsPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Insights" sub="Which mistakes keep coming back, and which rules people keep overriding, for the brand kit in use." />
-      {d && <KitScope kit={d.kit} scope={scope} onScope={setScope} brand={brand} onBrand={setBrand} />}
+      {d && <div data-tour="scope"><KitScope kit={d.kit} scope={scope} onScope={setScope} brand={brand} onBrand={setBrand} /></div>}
       {!d ? (error ? <Notice tone="error" role="alert">{error}</Notice> : <div className="space-y-4"><div className="skeleton h-14 w-full" /><div className="grid gap-4 sm:grid-cols-4">{[0, 1, 2, 3].map((i) => <div key={i} className="skeleton h-24" />)}</div></div>) : (
         <>
           {d.drafts === 0 && (
@@ -67,7 +69,7 @@ export default function InsightsPage() {
             </section>
           )}
 
-          <Card title="Repeated issues" sub="Fired = the rule found something in a post. Fixed = the creator accepted the suggested fix. Overridden = kept the original with a reason." bodyClass="p-0">
+          <Card tour="repeated" title="Repeated issues" sub="Fired = the rule found something in a post. Fixed = the creator accepted the suggested fix. Overridden = kept the original with a reason." bodyClass="p-0">
             {groups.length === 0 && <p className="px-5 py-4 text-sm text-muted">No rule has fired on a post checked against this kit yet.</p>}
             {groups.map((g) => (
               <div key={g} className="border-b border-line last:border-0">

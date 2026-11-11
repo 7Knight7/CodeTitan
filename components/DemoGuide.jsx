@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { ROLES } from "./RoleProvider";
 import Icon from "./Icon";
+import { resetTour } from "./Tour";
 
 const KEY = "lbc-demo-steps";
 
@@ -54,13 +55,14 @@ export default function DemoGuide({ person }) {
       await api("/reset", { method: "POST" });
       if (back && back !== "Marketing head") await api("/session/role", { method: "POST", body: { role: back } });
       writeDone([]);
+      resetTour(); // the tips start again too
       window.location.href = "/overview";
     } catch (e) { setError(e.message); setGoing(null); }
   }
 
   const count = STEPS.filter((s) => done.includes(s.id)).length;
   return (
-    <section className="panel overflow-hidden" aria-labelledby="guide-title">
+    <section className="panel overflow-hidden" aria-labelledby="guide-title" data-tour="guide">
       <div className="flex flex-wrap items-center gap-3 bg-navy px-5 py-4 text-white">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-teal text-ink"><Icon name="sparkle" className="h-5 w-5" /></span>
         <div className="min-w-0 flex-1">
@@ -88,7 +90,7 @@ export default function DemoGuide({ person }) {
                     <p className="text-sm font-medium">{s.title}</p>
                     <p className="mt-0.5 text-xs leading-5 text-muted">{s.body}</p>
                   </div>
-                  <button onClick={() => go(s)} disabled={!!going}
+                  <button onClick={() => go(s)} disabled={!!going} data-tour={i === 0 ? "guide-step-1" : undefined}
                     className={`btn btn-sm ml-11 shrink-0 sm:ml-0 ${isDone ? "btn-quiet" : "btn-teal"}`}>
                     {going === s.id ? <Icon name="refresh" className="h-3.5 w-3.5 animate-spin" /> : null}
                     {person?.role === s.role ? (isDone ? "Open again" : "Open") : `Open as ${who.split(" (")[0]}`}
