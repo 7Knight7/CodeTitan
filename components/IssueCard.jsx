@@ -47,7 +47,7 @@ export default function IssueCard({ finding: f, n, active, onSelect, onDecide, d
         <h3 className={`mt-2.5 text-sm font-semibold ${decision ? "text-muted" : ""}`}>{f.name}</h3>
 
         {f.quote && (
-          <p className={`mt-2 rounded-md px-3 py-2 text-sm ${decision ? "bg-white text-muted ring-1 ring-line" : `bg-${f.severity}-soft`}`}>
+          <p className={`mt-2 rounded-md px-3 py-2 text-sm ${decision ? "bg-surface text-muted ring-1 ring-line" : `bg-${f.severity}-soft`}`}>
             <span className={canAutoFix && !decision ? "line-through decoration-1 opacity-80" : ""}>&ldquo;{f.quote}&rdquo;</span>
           </p>
         )}
@@ -75,7 +75,7 @@ export default function IssueCard({ finding: f, n, active, onSelect, onDecide, d
         </dl>
 
         {decision ? (
-          <p className="mt-3 flex items-start gap-2 rounded-md bg-white px-3 py-2 text-sm ring-1 ring-line">
+          <p className="mt-3 flex items-start gap-2 rounded-md bg-surface px-3 py-2 text-sm ring-1 ring-line">
             <Icon name={decision.action === "reject" ? "user" : "check"} className={`mt-0.5 h-4 w-4 shrink-0 ${decision.action === "reject" ? "text-muted" : "text-approved"}`} />
             <span>
               <span className="font-medium">{decision.action === "reject" ? "Kept original" : decision.action === "edit" ? "Edited by you" : canAutoFix ? "Fix accepted" : "You said you will fix this"}</span>

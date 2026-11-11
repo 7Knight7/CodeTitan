@@ -49,7 +49,7 @@ export default function InsightsPage() {
           </div>
 
           {flagged.length > 0 && (
-            <section className="overflow-hidden rounded-lg border border-warning-vivid/50 bg-white">
+            <section className="overflow-hidden rounded-lg border border-warning-vivid/50 bg-surface">
               <div className="flex items-start gap-3 bg-warning-soft px-5 py-4">
                 <Icon name="alert" className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
                 <div>

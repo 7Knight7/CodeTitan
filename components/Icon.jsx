@@ -21,6 +21,11 @@ const PATHS = {
   alert: <><path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3Z" /><path d="M12 9v4" /><path d="M12 17h.01" /></>,
   alertCircle: <><circle cx="12" cy="12" r="10" /><path d="M12 8v4" /><path d="M12 16h.01" /></>,
   info: <><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></>,
+  sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="m4.9 4.9 1.4 1.4" /><path d="m17.7 17.7 1.4 1.4" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="m6.3 17.7-1.4 1.4" /><path d="m19.1 4.9-1.4 1.4" /></>,
+  moon: <path d="M20.9 14.5A9 9 0 1 1 9.5 3.1 7 7 0 0 0 20.9 14.5Z" />,
+  calendar: <><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4" /><path d="M8 2v4" /><path d="M3 10h18" /></>,
+  target: <><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="6" /><circle cx="12" cy="12" r="2" /></>,
+  arrowRight: <><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></>,
   help: <><circle cx="12" cy="12" r="10" /><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3" /><path d="M12 17h.01" /></>,
   x: <><path d="M18 6 6 18" /><path d="m6 6 12 12" /></>,
   plus: <><path d="M12 5v14" /><path d="M5 12h14" /></>,
@@ -51,13 +56,13 @@ export default function Icon({ name, className = "h-[18px] w-[18px]", strokeWidt
   );
 }
 
-/** Product mark: a check inside a speech-bubble corner, teal on navy. */
+/** Product mark: a check inside a speech bubble on an ink tile (follows the theme). */
 export function Logo({ className = "h-8 w-8" }) {
   return (
     <svg viewBox="0 0 32 32" className={className} aria-hidden>
-      <rect width="32" height="32" rx="8" fill="#16B8A6" />
-      <path d="M9 9.5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-4.5 3.5V21.5H9a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z" fill="#14263D" />
-      <path d="m12 15.5 2.6 2.6L20 12.8" fill="none" stroke="#16B8A6" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+      <rect width="32" height="32" rx="10" className="fill-ink" />
+      <path d="M9 9.5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-4.5 3.5V21.5H9a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z" className="fill-surface" />
+      <path d="m12 15.5 2.6 2.6L20 12.8" fill="none" className="stroke-teal" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

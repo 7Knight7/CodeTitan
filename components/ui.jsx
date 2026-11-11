@@ -1,6 +1,28 @@
 "use client";
+import { useEffect, useState } from "react";
 import { STATUS_LABEL } from "@/lib/api";
 import Icon from "./Icon";
+
+/** Circular progress ring. Draws from empty to `pct` once, then follows changes. Only pass a real, computed share. */
+export function ScoreRing({ pct, size = 120, stroke = 10, tone = "accent", label, sub }) {
+  const [shown, setShown] = useState(0);
+  useEffect(() => { const t = setTimeout(() => setShown(pct), 60); return () => clearTimeout(t); }, [pct]);
+  const r = (size - stroke) / 2, c = 2 * Math.PI * r;
+  const color = { accent: "stroke-teal", approved: "stroke-approved-vivid", warning: "stroke-warning-vivid", blocker: "stroke-blocker-vivid" }[tone];
+  return (
+    <div className="relative shrink-0" style={{ width: size, height: size }} role="img" aria-label={`${pct}%${label ? ` ${label}` : ""}`}>
+      <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={stroke} className="stroke-line" />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={stroke} strokeLinecap="round" className={`${color} ring-draw`}
+          strokeDasharray={c} strokeDashoffset={c * (1 - shown / 100)} />
+      </svg>
+      <span className="absolute inset-0 flex flex-col items-center justify-center text-center">
+        <span className="font-semibold tabular-nums tracking-tight" style={{ fontSize: size * 0.24 }}>{pct}%</span>
+        {sub && <span className="mt-0.5 max-w-[70%] text-2xs leading-tight text-muted">{sub}</span>}
+      </span>
+    </div>
+  );
+}
 
 /** Shared building blocks so every page uses the same surfaces, chips and empty states. */
 
@@ -65,7 +87,7 @@ export function Notice({ tone = "info", children, role, className = "" }) {
     error: ["bg-blocker-soft text-blocker ring-blocker-vivid/30", "alertCircle"],
     success: ["bg-approved-soft text-approved ring-approved-vivid/25", "checkCircle"],
     warning: ["bg-warning-soft text-warning ring-warning-vivid/35", "alert"],
-    info: ["bg-white text-muted ring-line", "info"],
+    info: ["bg-surface text-muted ring-line", "info"],
     sensitive: ["bg-sensitive-soft text-sensitive ring-sensitive-vivid/30", "shield"],
   }[tone];
   return (

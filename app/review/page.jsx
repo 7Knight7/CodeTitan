@@ -86,7 +86,7 @@ export default function ReviewPage() {
             </Notice>
           )}
           {isCreator && mustDo.length > 0 && (
-            <div role="alert" className="overflow-hidden rounded-lg border border-blocker-vivid/40 bg-white">
+            <div role="alert" className="overflow-hidden rounded-lg border border-blocker-vivid/40 bg-surface">
               <p className="flex items-center gap-2 bg-blocker-soft px-4 py-2.5 text-sm font-semibold text-blocker"><Icon name="alertCircle" className="h-4 w-4" />Must do now: {mustDo.length} post{mustDo.length > 1 ? "s" : ""} sent back to you</p>
               <ul className="divide-y divide-line">
                 {mustDo.map((d) => (
@@ -106,10 +106,10 @@ export default function ReviewPage() {
 
           <div className="panel overflow-hidden" data-tour="queue">
             <div className="border-b border-line p-2">
-              <div className="flex gap-1 overflow-x-auto" role="tablist" aria-label="Filter posts">
+              <div className="flex flex-wrap gap-1" role="tablist" aria-label="Filter posts">
                 {FILTERS.map(([id, label]) => (
                   <button key={id} role="tab" aria-selected={filter === id} onClick={() => setFilter(id)}
-                    className={`shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${filter === id ? "bg-ink text-white" : "text-muted hover:bg-canvas hover:text-ink"}`}>
+                    className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${filter === id ? "bg-ink text-surface" : "text-muted hover:bg-canvas hover:text-ink"}`}>
                     {label} <span className="opacity-60">{counts[id]}</span>
                   </button>
                 ))}
@@ -189,8 +189,8 @@ export default function ReviewPage() {
                   {(selected.images || []).map((m, i) => (
                     <div key={i} className="flex flex-col gap-4 rounded-lg bg-canvas p-3 text-sm ring-1 ring-line sm:flex-row">
                       {m.preview
-                        ? <img src={m.preview} alt={m.alt_text || `Post image ${i + 1}`} className="max-h-72 w-full shrink-0 rounded-md border border-line bg-white object-contain sm:w-64" />
-                        : <div className="flex h-32 w-full shrink-0 items-center justify-center rounded-md border border-dashed border-line bg-white p-2 text-center text-xs text-muted sm:w-40">No preview saved. Ask the creator to check the post again.</div>}
+                        ? <img src={m.preview} alt={m.alt_text || `Post image ${i + 1}`} className="max-h-72 w-full shrink-0 rounded-md border border-line bg-surface object-contain sm:w-64" />
+                        : <div className="flex h-32 w-full shrink-0 items-center justify-center rounded-md border border-dashed border-line bg-surface p-2 text-center text-xs text-muted sm:w-40">No preview saved. Ask the creator to check the post again.</div>}
                       <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] content-start gap-x-3 gap-y-1">
                         <dt className="col-span-2 mb-1 font-medium">Image {i + 1}: <span className="font-normal text-muted">{m.file_name}</span></dt>
                         <dt className="text-muted">Text in image</dt><dd>{m.text || "none"}</dd>

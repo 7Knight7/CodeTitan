@@ -31,11 +31,11 @@ export default function Shell({ children }) {
   return (
     <WorkspaceContext.Provider value={workspace}>
       <TourProvider>
-      <div className={`min-h-screen transition-[padding] duration-200 ${collapsed ? "lg:pl-[4.5rem]" : "lg:pl-64"}`}>
+      <div className={`min-h-screen transition-[padding] duration-300 ${collapsed ? "lg:pl-[6rem]" : "lg:pl-[16.5rem]"}`}>
         <Nav collapsed={collapsed} onToggle={toggle} workspace={workspace} />
         <div className="mx-auto max-w-[88rem] px-4 sm:px-6 lg:px-8">
           <main className="py-6 lg:py-8">{children}</main>
-          <footer className="border-t border-line py-6 text-xs leading-relaxed text-muted">
+          <footer className="border-t border-line/70 py-6 text-xs leading-relaxed text-muted">
             <p className="max-w-3xl">
               Demo data is fictional. Post images are read in your browser; only a small preview is saved so reviewers can see the post. Posts are checked with fixed rules
               and your approved facts, not AI. Brand kit PDFs may be read with an AI service if one is configured; every item is confirmed by a person.

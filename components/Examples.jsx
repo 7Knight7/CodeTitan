@@ -99,7 +99,7 @@ export default function ExamplePicker({ onRun, running, canRun, blockedReason, o
           {!canRun && (
             <div className="mb-3 flex flex-wrap items-center gap-3 rounded-md bg-canvas px-3 py-2.5 text-sm">
               <Icon name="info" className="h-4 w-4 shrink-0 text-muted" />
-              <span className="min-w-0 flex-1 text-muted">{blockedReason}</span>
+              <span className="min-w-0 flex-1 basis-48 text-muted">{blockedReason}</span>
               {onSwitch && <button className="btn btn-teal btn-sm" onClick={onSwitch}>Switch to Priya (creator)</button>}
             </div>
           )}
@@ -109,14 +109,14 @@ export default function ExamplePicker({ onRun, running, canRun, blockedReason, o
               <span>These examples are written for the demo brand, {DEMO_BRAND}. With {brand} live, most will also be flagged as not on brand. To see them as intended, restore the demo brand from the guided demo on Overview.</span>
             </p>
           )}
-          <ul className="grid gap-2.5 sm:grid-cols-2 2xl:grid-cols-3">
+          <ul className="grid gap-2.5 [grid-template-columns:repeat(auto-fill,minmax(15.5rem,1fr))]">
             {EXAMPLES.map((ex) => {
               const [dot, outcome] = TONE[ex.tone];
               const isRunning = running === ex.id;
               return (
                 <li key={ex.id}>
                   <button type="button" disabled={!canRun || !!running} onClick={() => onRun(ex)}
-                    className={`group flex h-full w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors disabled:cursor-not-allowed ${isRunning ? "border-teal bg-teal-soft/60 ring-1 ring-teal" : "border-line bg-white hover:border-teal hover:bg-teal-soft/30 disabled:opacity-60 disabled:hover:border-line disabled:hover:bg-white"}`}>
+                    className={`group flex h-full w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors disabled:cursor-not-allowed ${isRunning ? "border-teal bg-teal-soft/60 ring-1 ring-teal" : "border-line bg-surface hover:border-teal hover:bg-teal-soft/30 disabled:opacity-60 disabled:hover:border-line disabled:hover:bg-surface"}`}>
                     {ex.image
                       ? <img src={`/samples/${ex.image}`} alt="" className="h-11 w-11 shrink-0 rounded-md object-cover ring-1 ring-line" />
                       : <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-canvas text-muted ring-1 ring-line"><Icon name="message" className="h-4 w-4" /></span>}
@@ -130,7 +130,7 @@ export default function ExamplePicker({ onRun, running, canRun, blockedReason, o
                     </span>
                     {isRunning
                       ? <Icon name="refresh" className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-teal-dark" />
-                      : <Icon name="chevronRight" className="mt-0.5 h-4 w-4 shrink-0 text-[#B4BCC8] group-hover:text-teal-dark" />}
+                      : <Icon name="chevronRight" className="mt-0.5 h-4 w-4 shrink-0 text-faint group-hover:text-teal-dark" />}
                   </button>
                 </li>
               );

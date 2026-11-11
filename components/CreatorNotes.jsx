@@ -88,11 +88,11 @@ export default function Notifications() {
         className={`relative flex h-9 w-9 items-center justify-center rounded-md transition-colors hover:bg-canvas ${open ? "bg-canvas text-ink" : "text-muted"}`}>
         <Icon name="bell" />
         {count > 0 && (
-          <span className={`absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-2xs font-semibold ring-2 ring-white ${isCreator ? "bg-blocker-vivid text-white" : "bg-teal text-ink"}`}>{count}</span>
+          <span className={`absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-2xs font-semibold ring-2 ring-surface ${isCreator ? "bg-blocker-vivid text-white" : "bg-teal text-white"}`}>{count}</span>
         )}
       </button>
       {open && (
-        <div role="dialog" aria-label="Notifications" className="pop-in absolute right-0 top-11 z-40 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-lg border border-line bg-white shadow-xl">
+        <div role="dialog" aria-label="Notifications" className="pop-in absolute right-0 top-11 z-40 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-lg border border-line bg-surface shadow-xl">
           <div className="flex items-center gap-2 border-b border-line px-4 py-3">
             <p className="text-sm font-semibold">{isCreator ? "Sent back to you" : "Waiting for review"}</p>
             {count > 0 && <span className="chip">{count}</span>}

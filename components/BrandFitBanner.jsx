@@ -22,7 +22,7 @@ export default function BrandFitBanner({ fit, compact = false }) {
 
   const no = fit.verdict === "no";
   return (
-    <div role="alert" className={`overflow-hidden rounded-lg border-2 bg-white text-sm ${no ? "border-blocker-vivid" : "border-warning-vivid"}`}>
+    <div role="alert" className={`overflow-hidden rounded-lg border-2 bg-surface text-sm ${no ? "border-blocker-vivid" : "border-warning-vivid"}`}>
       <div className={`flex items-start gap-3 px-4 py-3.5 ${no ? "bg-blocker-soft" : "bg-warning-soft"}`}>
         <span aria-hidden className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white ${no ? "bg-blocker-vivid" : "bg-warning-vivid"}`}>
           <Icon name={no ? "x" : "alert"} className="h-5 w-5" strokeWidth={2.4} />

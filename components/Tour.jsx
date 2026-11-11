@@ -260,7 +260,7 @@ function TipCard({ tourId, index, onGo, onDone, onOff }) {
   if (step.welcome) {
     return (
       <div className="fixed inset-0 z-[60] flex items-end justify-center bg-navy/40 p-4 backdrop-blur-[2px] sm:items-center" role="presentation">
-        <div ref={card} role="dialog" aria-modal="true" aria-labelledby="tour-title" className="pop-in w-full max-w-md overflow-hidden rounded-lg bg-white shadow-xl">
+        <div ref={card} role="dialog" aria-modal="true" aria-labelledby="tour-title" className="pop-in w-full max-w-md overflow-hidden rounded-lg bg-surface shadow-xl">
           <div className="bg-navy px-6 pb-5 pt-6 text-white">
             <span className="flex h-10 w-10 items-center justify-center rounded-md bg-teal text-ink"><Icon name="sparkle" className="h-5 w-5" /></span>
             <h2 id="tour-title" className="mt-4 text-lg font-semibold">{step.title}</h2>
@@ -282,10 +282,10 @@ function TipCard({ tourId, index, onGo, onDone, onOff }) {
           style={{ top: rect.top - 6, left: rect.left - 6, width: rect.width + 12, height: rect.height + 12, boxShadow: "0 0 0 6px rgba(22,184,166,.18)" }} />
       )}
       <div ref={card} role="dialog" aria-labelledby="tour-title" aria-live="polite"
-        className={`pop-in fixed z-[60] rounded-lg border border-line bg-white shadow-xl ${pos?.mobile ? "inset-x-4 bottom-4" : "w-[22rem]"} ${waiting || (!pos && !step.welcome) ? "invisible" : ""}`}
+        className={`pop-in fixed z-[60] rounded-lg border border-line bg-surface shadow-xl ${pos?.mobile ? "inset-x-4 bottom-4" : "w-[22rem]"} ${waiting || (!pos && !step.welcome) ? "invisible" : ""}`}
         style={pos && !pos.mobile ? { top: pos.top, left: pos.left } : undefined}>
         {pos && !pos.mobile && pos.side !== "over" && (
-          <span aria-hidden className={`absolute h-3 w-3 rotate-45 border-line bg-white ${{
+          <span aria-hidden className={`absolute h-3 w-3 rotate-45 border-line bg-surface ${{
             below: "-top-1.5 border-l border-t", above: "-bottom-1.5 border-b border-r",
             left: "-right-1.5 border-r border-t", right: "-left-1.5 border-b border-l" }[pos.side]}`}
             style={pos.side === "left" || pos.side === "right" ? { top: pos.arrow - 6 } : { left: pos.arrow - 6 }} />

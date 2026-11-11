@@ -2,62 +2,158 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ---------- Theme variables ("R G B" channels; see tailwind.config.js) ----------
+   Light: mist-white to pale-blue light, frosted white glass, near-black type, soft electric blue accent.
+   Dark: midnight blue, translucent navy glass, soft white type, muted blue accent.
+   .theme-light keeps a region light in both themes (platform previews should look like the platform). */
+:root, .theme-light, .dark .theme-light {
+  color-scheme: light;
+  --ink: 16 24 40;            /* #101828 */
+  --muted: 102 112 133;       /* #667085 */
+  --faint: 152 162 179;       /* #98A2B3 */
+  --line: 223 230 239;
+  --line-strong: 203 213 225;
+  --canvas: 238 243 249;
+  --surface: 255 255 255;
+  --glass: 255 255 255;       /* frosted cards, used at ~0.66 */
+  --glass-border: 255 255 255;
+  --shadow: 23 43 77;
+  --navy: 23 43 77;           /* #172B4D */
+  --navy-2: 31 53 96;
+  --navy-3: 42 65 112;
+  --navy-line: 52 76 122;
+  --accent: 82 120 216;       /* #5278D8 */
+  --accent-text: 55 92 190;
+  --accent-soft: 232 239 252;
+  --blocker: 184 64 66;  --blocker-soft: 253 238 238;  --blocker-vivid: 231 111 112;   /* #E76F70 */
+  --warning: 138 90 0;   --warning-soft: 253 244 225;  --warning-vivid: 233 170 67;    /* #E9AA43 */
+  --approved: 28 125 90; --approved-soft: 230 245 238; --approved-vivid: 35 155 112;   /* #239B70 */
+  --suggestion: 71 84 103; --suggestion-soft: 238 242 247; --suggestion-vivid: 102 112 133;
+  --sensitive: 107 70 168; --sensitive-soft: 242 237 250; --sensitive-vivid: 139 107 196;
+  --glass-alpha: 0.66;
+  --glass-border-alpha: 0.75;
+}
+.dark {
+  color-scheme: dark;
+  --ink: 232 237 245;
+  --muted: 160 174 196;
+  --faint: 112 128 156;
+  --line: 44 58 88;
+  --line-strong: 62 80 116;
+  --canvas: 27 39 66;
+  --surface: 22 33 58;
+  --glass: 24 37 66;
+  --glass-border: 148 176 240;
+  --shadow: 0 0 0;
+  --navy: 30 47 86;
+  --navy-2: 38 58 104;
+  --navy-3: 50 74 128;
+  --navy-line: 62 88 140;
+  --accent: 122 152 232;
+  --accent-text: 160 186 246;
+  --accent-soft: 34 52 96;
+  --blocker: 246 156 156;  --blocker-soft: 64 30 40;   --blocker-vivid: 231 111 112;
+  --warning: 242 198 112;  --warning-soft: 58 44 20;   --warning-vivid: 233 170 67;
+  --approved: 112 210 166; --approved-soft: 20 52 44;  --approved-vivid: 35 155 112;
+  --suggestion: 176 188 208; --suggestion-soft: 36 48 72; --suggestion-vivid: 130 144 170;
+  --sensitive: 196 172 244; --sensitive-soft: 48 36 80; --sensitive-vivid: 160 130 220;
+  --glass-alpha: 0.58;
+  --glass-border-alpha: 0.12;
+}
+.theme-light { color: rgb(var(--ink)); }
+
 html { -webkit-text-size-adjust: 100%; }
-body { @apply bg-canvas text-ink font-sans antialiased; font-feature-settings: "cv11", "ss01", "ss03"; }
-:focus-visible { outline: 2px solid #16B8A6; outline-offset: 2px; border-radius: 6px; }
-::selection { background: #E3F6F3; color: #14263D; }
-h1, h2, h3 { letter-spacing: -0.011em; }
+body {
+  @apply text-ink font-sans antialiased;
+  font-feature-settings: "cv11", "ss01", "ss03";
+  background-color: #EAF0F7;
+  background-image:
+    radial-gradient(1100px 760px at 88% -12%, #D6E5F6 0%, transparent 62%),
+    radial-gradient(900px 680px at -8% 38%, #E1E9FA 0%, transparent 60%),
+    radial-gradient(800px 600px at 60% 110%, #DCEAF5 0%, transparent 60%),
+    linear-gradient(180deg, #F7F9FC 0%, #EAF0F7 100%);
+  background-attachment: fixed;
+  transition: background-color .3s ease, color .3s ease;
+}
+.dark body {
+  background-color: #0B1428;
+  background-image:
+    radial-gradient(1000px 700px at 85% -10%, rgba(82, 120, 216, .22) 0%, transparent 60%),
+    radial-gradient(900px 650px at -10% 45%, rgba(48, 78, 150, .20) 0%, transparent 60%),
+    linear-gradient(180deg, #0E1A33 0%, #0A1225 100%);
+}
+:focus-visible { outline: 2px solid rgb(var(--accent)); outline-offset: 2px; border-radius: 8px; }
+::selection { background: rgb(var(--accent-soft)); color: rgb(var(--ink)); }
+h1, h2, h3 { letter-spacing: -0.012em; }
 
 /* Proof marks in the post text: underline colour = severity. Wavy for AI, solid for rule-based. */
-.mark { text-decoration-thickness: 2px; text-underline-offset: 4px; text-decoration-line: underline; cursor: pointer; border-radius: 3px; padding: 0 1px; transition: background-color .15s; }
-.mark-blocker { text-decoration-color: #E76F70; background: #FCEEEE; }
-.mark-warning { text-decoration-color: #F4B544; background: #FEF5E2; }
-.mark-suggestion { text-decoration-color: #64748B; background: #EEF1F5; }
+.mark { text-decoration-thickness: 2px; text-underline-offset: 4px; text-decoration-line: underline; cursor: pointer; border-radius: 4px; padding: 0 2px; transition: background-color .15s; }
+.mark-blocker { text-decoration-color: rgb(var(--blocker-vivid)); background: rgb(var(--blocker-soft)); }
+.mark-warning { text-decoration-color: rgb(var(--warning-vivid)); background: rgb(var(--warning-soft)); }
+.mark-suggestion { text-decoration-color: rgb(var(--suggestion-vivid)); background: rgb(var(--suggestion-soft)); }
 .mark-ai { text-decoration-style: wavy; }
-.mark-active { outline: 2px solid #16B8A6; outline-offset: 1px; }
+.mark-active { outline: 2px solid rgb(var(--accent)); outline-offset: 1px; }
 .ref { font: 600 10px/1 "Inter", sans-serif; vertical-align: super; margin-left: 1px; }
 
 @layer components {
-  /* Buttons: teal is the one primary action on a screen; navy for strong secondary actions. */
-  .btn { @apply inline-flex items-center justify-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-45; }
-  .btn:active:not(:disabled) { transform: translateY(1px); }
-  .btn-primary { @apply bg-ink text-white hover:bg-navy-3; }
-  .btn-teal { @apply bg-teal text-ink hover:bg-[#13A796]; }
-  .btn-quiet { @apply border border-line bg-white text-ink hover:border-[#CDD3DC] hover:bg-canvas; }
-  .btn-approve { @apply bg-teal text-ink hover:bg-[#13A796]; }
-  .btn-danger { @apply border border-blocker-vivid/50 bg-white text-blocker hover:bg-blocker-soft; }
-  .btn-ghost { @apply text-muted hover:bg-canvas hover:text-ink; }
-  .btn-sm { @apply px-2.5 py-1.5 text-xs; }
+  /* Frosted glass: the card surface everywhere. */
+  .glass {
+    background-color: rgb(var(--glass) / var(--glass-alpha));
+    border: 1px solid rgb(var(--glass-border) / var(--glass-border-alpha));
+    -webkit-backdrop-filter: blur(20px) saturate(1.5);
+    backdrop-filter: blur(20px) saturate(1.5);
+  }
+  .panel { @apply glass rounded-lg shadow; }
+  .glass-strong {
+    background-color: rgb(var(--glass) / 0.86);
+    border: 1px solid rgb(var(--glass-border) / var(--glass-border-alpha));
+    -webkit-backdrop-filter: blur(24px) saturate(1.6);
+    backdrop-filter: blur(24px) saturate(1.6);
+  }
 
-  .field { @apply w-full rounded-md border border-line bg-white px-3 py-2 text-sm text-ink transition placeholder:text-[#94A3B8] hover:border-[#CDD3DC] focus:border-teal focus:outline-none focus:ring-[3px] focus:ring-teal/15 disabled:bg-canvas disabled:text-muted; }
+  /* Buttons: one black pill for the main action on a screen (white pill in dark mode). */
+  .btn { @apply inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-45; }
+  .btn:active:not(:disabled) { transform: scale(.98); }
+  .btn-primary, .btn-teal, .btn-approve { @apply bg-ink text-surface shadow-sm hover:opacity-90 hover:shadow; }
+  .btn-quiet { @apply border border-line bg-surface/70 text-ink hover:border-line-strong hover:bg-surface; }
+  .btn-danger { @apply border border-blocker-vivid/50 bg-surface/70 text-blocker hover:bg-blocker-soft; }
+  .btn-ghost { @apply text-muted hover:bg-surface/70 hover:text-ink; }
+  .btn-sm { @apply px-3 py-1.5 text-xs; }
+
+  .field { @apply w-full rounded-md border border-line bg-surface/80 px-3.5 py-2.5 text-sm text-ink transition placeholder:text-faint hover:border-line-strong focus:border-teal focus:bg-surface focus:outline-none focus:ring-4 focus:ring-teal/15 disabled:bg-canvas disabled:text-muted; }
   .label { @apply mb-1.5 block text-sm font-medium text-ink; }
-  .panel { @apply rounded-lg border border-line bg-sheet; }
 
-  .page-title { @apply text-2xl font-semibold tracking-tight text-ink; }
-  .page-sub { @apply mt-1 max-w-2xl text-sm leading-6 text-muted; }
+  .page-title { @apply text-[1.75rem] font-semibold leading-tight tracking-tight text-ink; }
+  .page-sub { @apply mt-1.5 max-w-2xl text-sm leading-6 text-muted; }
   .section-title { @apply text-sm font-semibold text-ink; }
   .link { @apply font-medium text-teal-dark underline-offset-2 hover:underline; }
 
-  .chip { @apply inline-flex items-center gap-1.5 rounded-full border border-line bg-white px-2.5 py-0.5 text-xs font-medium text-muted; }
+  .chip { @apply inline-flex items-center gap-1.5 rounded-full border border-line bg-surface/70 px-2.5 py-0.5 text-xs font-medium text-muted; }
   .dot { @apply inline-block h-2 w-2 shrink-0 rounded-full; }
 
-  /* Segmented choice used for platform, format and scope pickers. */
-  .seg { @apply inline-flex flex-wrap gap-1 rounded-md bg-canvas p-1 ring-1 ring-inset ring-line; }
-  .seg-item { @apply rounded px-3 py-1.5 text-sm text-muted transition-colors hover:text-ink; }
-  .seg-item[aria-checked="true"], .seg-item[aria-pressed="true"], .seg-item[aria-selected="true"] { @apply bg-white font-medium text-ink shadow-sm ring-1 ring-line; }
+  /* Segmented choice used for format, tabs and scope pickers. */
+  .seg { @apply inline-flex flex-wrap gap-1 rounded-full bg-canvas/80 p-1 ring-1 ring-inset ring-line; }
+  .seg-item { @apply rounded-full px-3.5 py-1.5 text-sm text-muted transition-colors duration-200 hover:text-ink; }
+  .seg-item[aria-checked="true"], .seg-item[aria-pressed="true"], .seg-item[aria-selected="true"] { @apply bg-surface font-medium text-ink shadow-sm; }
 
-  .skeleton { @apply animate-pulse rounded bg-[#ECEFF3]; }
+  .skeleton { @apply animate-pulse rounded-md bg-canvas; }
 }
 
-/* Sidebar navigation: active page gets a teal indicator. */
-.nav-link { @apply relative flex items-center gap-3 rounded-md px-2.5 py-2 text-sm font-medium text-white/65 transition-colors hover:bg-white/[0.06] hover:text-white; }
-.nav-link[aria-current="page"] { @apply bg-white/[0.08] text-white; }
-.nav-link[aria-current="page"]::before { content: ""; position: absolute; left: -12px; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: #16B8A6; }
+/* Sidebar navigation: the current page is a raised white pill with an accent marker. */
+.nav-link { @apply relative flex items-center gap-3 rounded-full px-3 py-2 text-sm font-medium text-muted transition-colors duration-200 hover:bg-surface/60 hover:text-ink; }
+.nav-link[aria-current="page"] { @apply bg-surface text-ink shadow-sm; }
+.nav-link[aria-current="page"] svg { color: rgb(var(--accent)); }
 
-.pop-in { animation: pop-in .14s ease-out; transform-origin: top right; }
+/* Lift on hover for cards that open something. */
+.lift { transition: transform .2s ease, box-shadow .2s ease; }
+.lift:hover { transform: translateY(-1px); box-shadow: 0 1px 2px rgb(var(--shadow) / .05), 0 18px 40px -16px rgb(var(--shadow) / .22); }
+
+.pop-in { animation: pop-in .16s ease-out; transform-origin: top right; }
 @keyframes pop-in { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: none; } }
-.drawer-enter { animation: drawer-in .2s cubic-bezier(.2,.8,.2,1); }
+.drawer-enter { animation: drawer-in .22s cubic-bezier(.2,.8,.2,1); }
 @keyframes drawer-in { from { transform: translateX(-100%); } to { transform: translateX(0); } }
-.ring-draw { transition: stroke-dashoffset .8s cubic-bezier(.2,.8,.2,1); }
+.ring-draw { transition: stroke-dashoffset 1s cubic-bezier(.2,.8,.2,1); }
+.fade-in { animation: fade-in .25s ease-out; }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

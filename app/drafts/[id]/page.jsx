@@ -19,8 +19,8 @@ function VersionImages({ images }) {
       {images.map((m, i) => (
         <div key={i} className="flex flex-col gap-4 rounded-lg bg-canvas p-3 text-sm ring-1 ring-line sm:flex-row">
           {m.preview
-            ? <img src={m.preview} alt={m.alt_text || `Post image ${i + 1}`} className="max-h-72 w-full shrink-0 rounded-md border border-line bg-white object-contain sm:w-56" />
-            : <div className="flex h-28 w-full shrink-0 items-center justify-center rounded-md border border-dashed border-line bg-white p-2 text-center text-xs text-muted sm:w-40">No preview saved</div>}
+            ? <img src={m.preview} alt={m.alt_text || `Post image ${i + 1}`} className="max-h-72 w-full shrink-0 rounded-md border border-line bg-surface object-contain sm:w-56" />
+            : <div className="flex h-28 w-full shrink-0 items-center justify-center rounded-md border border-dashed border-line bg-surface p-2 text-center text-xs text-muted sm:w-40">No preview saved</div>}
           <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] content-start gap-x-3 gap-y-1">
             <dt className="col-span-2 mb-1 font-medium">Image {i + 1}: <span className="font-normal text-muted">{m.file_name}</span></dt>
             <dt className="text-muted">Text in image</dt><dd>{m.text || "none"}</dd>
@@ -82,7 +82,7 @@ export default function HistoryPage({ params }) {
             <div className="mt-3 flex flex-wrap gap-1.5" role="tablist" aria-label="Versions">
               {d.versions.map((x) => (
                 <button key={x.version} role="tab" aria-selected={x.version === v.version} onClick={() => setShown(x.version)}
-                  className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm transition-colors ${x.version === v.version ? "border-ink bg-ink text-white" : "border-line bg-white hover:bg-canvas"}`}>
+                  className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm transition-colors ${x.version === v.version ? "border-ink bg-ink text-surface" : "border-line bg-surface hover:bg-canvas"}`}>
                   Version {x.version}
                   {x.version === d.approved_version && <Icon name="check" className={`h-3.5 w-3.5 ${x.version === v.version ? "text-teal" : "text-approved"}`} strokeWidth={2.4} />}
                 </button>

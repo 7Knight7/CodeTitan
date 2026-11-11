@@ -75,8 +75,8 @@ export default function AnalyticsPage() {
           <Stacked parts={SEVS.map((s) => ({ n: t[s.key], cls: s.bar, label: s.label }))} className="h-3" />
           <Legend items={SEVS.map((s) => ({ cls: s.bar, label: `${s.label} ${t[s.key]}` }))} />
           <p className="mt-5 text-sm font-medium">Checks passed and flagged</p>
-          <Stacked parts={[{ n: t.checks_passed, cls: "bg-approved-vivid", label: "Passed" }, { n: t.checks_run - t.checks_passed, cls: "bg-[#CBD5E1]", label: "Flagged" }]} className="mt-2 h-3" />
-          <Legend items={[{ cls: "bg-approved-vivid", label: `Passed ${t.checks_passed}` }, { cls: "bg-[#CBD5E1]", label: `Flagged ${t.checks_run - t.checks_passed}` }]} />
+          <Stacked parts={[{ n: t.checks_passed, cls: "bg-approved-vivid", label: "Passed" }, { n: t.checks_run - t.checks_passed, cls: "bg-line-strong", label: "Flagged" }]} className="mt-2 h-3" />
+          <Legend items={[{ cls: "bg-approved-vivid", label: `Passed ${t.checks_passed}` }, { cls: "bg-line-strong", label: `Flagged ${t.checks_run - t.checks_passed}` }]} />
         </Card>
 
         <div className="grid gap-6 lg:grid-cols-2">

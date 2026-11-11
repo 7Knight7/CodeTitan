@@ -48,6 +48,6 @@ export default function KitScope({ kit, scope, onScope, brand, onBrand }) {
 function Pill({ active, onClick, children }) {
   return (
     <button onClick={onClick} aria-pressed={active}
-      className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${active ? "border-teal bg-teal-soft text-ink" : "border-line bg-white text-muted hover:bg-canvas hover:text-ink"}`}>{children}</button>
+      className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${active ? "border-teal bg-teal-soft text-ink" : "border-line bg-surface text-muted hover:bg-canvas hover:text-ink"}`}>{children}</button>
   );
 }
