@@ -1,0 +1,8 @@
+# Never upload local secrets, build output or caches to Vercel.
+.env*
+.next
+node_modules
+__pycache__
+*.pyc
+.pytest_cache
+.claude
