@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { api, DRAFTS_EVENT } from "@/lib/api";
 import Nav from "./Nav";
+import { TourProvider } from "./Tour";
 
 const KEY = "lbc-sidebar-collapsed";
 const WorkspaceContext = createContext(null);
@@ -29,6 +30,7 @@ export default function Shell({ children }) {
   if (path === "/login") return children;
   return (
     <WorkspaceContext.Provider value={workspace}>
+      <TourProvider>
       <div className={`min-h-screen transition-[padding] duration-200 ${collapsed ? "lg:pl-[4.5rem]" : "lg:pl-64"}`}>
         <Nav collapsed={collapsed} onToggle={toggle} workspace={workspace} />
         <div className="mx-auto max-w-[88rem] px-4 sm:px-6 lg:px-8">
@@ -41,6 +43,7 @@ export default function Shell({ children }) {
           </footer>
         </div>
       </div>
+      </TourProvider>
     </WorkspaceContext.Provider>
   );
 }

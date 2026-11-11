@@ -10,6 +10,7 @@ import PostPreview from "@/components/PostPreview";
 import BrandFitBanner from "@/components/BrandFitBanner";
 import Icon from "@/components/Icon";
 import { Card, EmptyState, Notice, PageHeader, StatusChip } from "@/components/ui";
+import { useTour } from "@/components/Tour";
 
 const LAYOUT = { instagram: "visual", linkedin: "text", facebook: "social", whatsapp: "message", website: "banner" };
 const LAYERS = [["platform", "Platform requirements"], ["regulation", "Indian advertising regulations"], ["brand", "Brand governance"],
@@ -62,6 +63,7 @@ export default function ReviewPage() {
   }
 
   const isCreator = person?.role === "Creator";
+  useTour(isCreator ? "review-creator" : "review", loaded && !!person && (isCreator || !!selected || queue.length + recent.length === 0));
   const kept = selected?.decisions?.filter((d) => d.action === "reject") || [];
   const fixed = selected?.decisions?.filter((d) => d.action !== "reject") || [];
   const visible = [...queue, ...recent].filter((d) => filter === "all" || d.status === filter);
@@ -102,7 +104,7 @@ export default function ReviewPage() {
             </div>
           )}
 
-          <div className="panel overflow-hidden">
+          <div className="panel overflow-hidden" data-tour="queue">
             <div className="border-b border-line p-2">
               <div className="flex gap-1 overflow-x-auto" role="tablist" aria-label="Filter posts">
                 {FILTERS.map(([id, label]) => (
@@ -227,7 +229,7 @@ export default function ReviewPage() {
                 </div>
               </div>
 
-              <div className="grid gap-4 xl:grid-cols-2">
+              <div className="grid gap-4 xl:grid-cols-2" data-tour="review-checks">
                 <Card title={<span className="flex items-center gap-2"><Icon name="shield" className="h-4 w-4 text-muted" />Automated checks</span>}
                   sub={`Issues still in this version: ${selected.findings?.length || 0}`}>
                   {LAYERS.map(([lid, label]) => {
@@ -266,7 +268,7 @@ export default function ReviewPage() {
               </div>
 
               {selected.status === "in_review" && !isCreator && (
-                <div className="panel overflow-hidden">
+                <div className="panel overflow-hidden" data-tour="decision">
                   <div className="border-b border-line px-5 py-3.5">
                     <h3 className="section-title">Your decision</h3>
                     <p className="mt-0.5 text-xs text-muted">Signed in as {person?.name}. Your decision is saved to the audit history.</p>

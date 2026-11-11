@@ -7,6 +7,7 @@ import { useWorkspaceMeta } from "@/components/Shell";
 import Icon from "@/components/Icon";
 import { StatusChip, Card, EmptyState, Bar } from "@/components/ui";
 import DemoGuide from "@/components/DemoGuide";
+import { useTour } from "@/components/Tour";
 
 const STATUS_ORDER = [
   { key: "draft", label: "Drafts", cls: "bg-[#CBD5E1]" },
@@ -23,6 +24,7 @@ export default function OverviewPage() {
   const [stats, setStats] = useState(undefined); // undefined = loading, null = not available for this role
   const [error, setError] = useState("");
   const canSeeStats = person && person.role !== "Creator";
+  useTour("overview", !!person);
 
   useEffect(() => {
     api("/drafts").then(setDrafts).catch((e) => setError(e.message));

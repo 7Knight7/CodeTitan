@@ -4,9 +4,9 @@ import Icon from "./Icon";
 
 /** Shared building blocks so every page uses the same surfaces, chips and empty states. */
 
-export function Card({ title, sub, action, children, className = "", bodyClass = "p-5" }) {
+export function Card({ title, sub, action, children, className = "", bodyClass = "p-5", tour }) {
   return (
-    <section className={`panel min-w-0 ${className}`}>
+    <section className={`panel min-w-0 ${className}`} data-tour={tour}>
       {(title || action) && (
         <div className="flex items-start gap-3 border-b border-line px-5 py-3.5">
           <div className="min-w-0">

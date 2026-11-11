@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import KitScope from "@/components/KitScope";
 import Icon from "@/components/Icon";
 import { Bar, Card, EmptyState, Notice, PageHeader, StatusChip } from "@/components/ui";
+import { useTour } from "@/components/Tour";
 
 const SEVS = [
   { key: "blocker", label: "Critical", bar: "bg-blocker-vivid", text: "text-blocker" },
@@ -22,6 +23,7 @@ export default function AnalyticsPage() {
     api(`/analytics?scope=${scope}${brand ? `&brand=${encodeURIComponent(brand)}` : ""}`).then(setD).catch((e) => setError(e.message));
   }, [scope, brand]);
 
+  useTour("analytics", !!d && d.posts.length > 0);
   const header = <PageHeader title="Analytics" sub="Critical issues, warnings and suggestions in the latest version of every post, and the checks that passed. Posts marked “Sample” are demo history." />;
   if (!d) return <div className="space-y-6">{header}{error ? <Notice tone="error" role="alert">{error}</Notice> : <Loading />}</div>;
   const t = d.totals;
@@ -53,7 +55,7 @@ export default function AnalyticsPage() {
           body="When creators check posts in the content checker, their issues and passed checks show up here." /></div>
       )}
       {d.posts.length > 0 && <>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" data-tour="kpis">
           <div className="panel p-4 sm:col-span-2 lg:col-span-1">
             <p className="text-xs text-muted">Checks passed</p>
             <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-approved">{passRate}%</p>
@@ -78,7 +80,7 @@ export default function AnalyticsPage() {
         </Card>
 
         <div className="grid gap-6 lg:grid-cols-2">
-          <Card title="Most common issues" sub="Ranked by how often they appear">
+          <Card tour="common" title="Most common issues" sub="Ranked by how often they appear">
             {d.issues.length === 0 ? <p className="text-sm text-muted">No issues in any post.</p> : (
               <ul className="space-y-3.5">
                 {d.issues.map((r) => (

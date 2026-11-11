@@ -12,6 +12,7 @@ import { MemoryTips } from "@/components/BrandMemory";
 import Icon from "@/components/Icon";
 import { Card, Notice, PageHeader, StatusChip } from "@/components/ui";
 import ExamplePicker, { EXAMPLES } from "@/components/Examples";
+import { useTour } from "@/components/Tour";
 
 const MAX_MEDIA = 10;
 const LEGACY = { // posts saved before platforms existed
@@ -276,6 +277,11 @@ function WritePage() {
   const totalChecks = profile ? profile.layers.reduce((n, L) => n + L.checks.length, 0) : 0;
 
   const summary = result?.summary;
+
+  // First-run tips: before the first check, when results first appear, and right after sending.
+  useTour(notCreator ? "checker-viewer" : "checker", !!schema && !result && !pending && !noKit && !params.get("example"));
+  useTour("checker-results", !!result && !pending && !busy && canAct && !notice);
+  useTour("checker-sent", !!notice);
   const unresolvedWarnings = findings.filter((f) => f.severity === "warning" && !decisions.get(keyOf(f))).length;
 
   return (
@@ -304,7 +310,7 @@ function WritePage() {
         )}
 
         {/* Where, how and under what commercial context: always visible so changing fields make sense */}
-        <div id="selectors" className="panel scroll-mt-20">
+        <div id="selectors" className="panel scroll-mt-20" data-tour="setup">
           <div className="space-y-5 p-5">
             <div>
               <label className="label" htmlFor="title">Post title <span className="font-normal text-muted">(for your team)</span></label>
@@ -423,7 +429,7 @@ function WritePage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3 rounded-b-lg border-t border-line bg-canvas/60 px-5 py-4">
-            <button className="btn btn-teal" disabled={busy || locked || !canAct || !!reading || !schema} onClick={() => check()}>
+            <button className="btn btn-teal" data-tour="check-button" disabled={busy || locked || !canAct || !!reading || !schema} onClick={() => check()}>
               <Icon name={result ? "refresh" : "shield"} className="h-4 w-4" />{busy ? "Checking…" : result ? "Check again" : "Check post"}
             </button>
             {draft?.platform && !locked && canAct && <button className="btn btn-quiet" onClick={() => setAdaptOpen(!adaptOpen)} aria-expanded={adaptOpen}><Icon name="copy" className="h-4 w-4" />Adapt for other platforms</button>}
@@ -434,13 +440,13 @@ function WritePage() {
 
         {error && <Notice tone="error" role="alert">{error}</Notice>}
         {notice && (
-          <Notice tone="success" role="status">
+          <div data-tour="sent"><Notice tone="success" role="status">
             {notice} <Link href="/review" className="font-medium underline">Open the review queue</Link> and switch to a reviewer from the account menu to decide.
-          </Notice>
+          </Notice></div>
         )}
 
         {result && caption.trim() && (
-          <div id="results" className="panel scroll-mt-20">
+          <div id="results" className="panel scroll-mt-20" data-tour="proof-text">
             <div className="flex items-center gap-2 border-b border-line px-5 py-3.5">
               <h2 className="section-title">{schema?.fields.find((x) => x.id === "main_text")?.label || "Caption"} with issues marked</h2>
               <span className="ml-auto hidden items-center gap-3 text-xs text-muted sm:flex">
@@ -493,7 +499,7 @@ function WritePage() {
           </div>
         ) : (
           <>
-            <div className="panel overflow-hidden">
+            <div className="panel overflow-hidden" data-tour="verdict">
               <ResultVerdict locked={locked} draft={draft} blockers={openBlockerList.length} warnings={unresolvedWarnings}
                 inputErrors={inputErrors.length} summary={summary} />
               <div className="grid grid-cols-3 border-y border-line">
@@ -534,7 +540,7 @@ function WritePage() {
                 </div>
               )}
               {draft && !locked && canAct && (
-                <div className="border-t border-line bg-canvas/60 p-4">
+                <div className="border-t border-line bg-canvas/60 p-4" data-tour="send">
                   <button className="btn btn-teal w-full" disabled={busy || openBlockerList.length > 0} onClick={submit}>
                     <Icon name="send" className="h-4 w-4" />{draft.status === "changes_requested" ? "Send back for review" : "Send for review"}
                   </button>
@@ -575,7 +581,7 @@ function WritePage() {
                     <span className="chip px-2 py-0">{list.length}</span>
                   </h2>
                   {list.map((f) => (
-                    <div id={`card-${f.id}`} key={f.id} className="scroll-mt-20">
+                    <div id={`card-${f.id}`} key={f.id} className="scroll-mt-20" data-tour="issue">
                       <IssueCard finding={f} n={findings.indexOf(f) + 1} active={activeId === f.id} onSelect={setActiveId}
                         decision={decisions.get(keyOf(f))} disabled={locked || busy || !canAct} onDecide={(action, opts) => decide(f, action, opts)} />
                     </div>

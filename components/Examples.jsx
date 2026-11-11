@@ -84,7 +84,7 @@ export const DEMO_BRAND = "Northstar Civils Academy";
 export default function ExamplePicker({ onRun, running, canRun, blockedReason, onSwitch, brand, defaultOpen = true }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <section className="panel overflow-hidden" aria-labelledby="examples-title">
+    <section className="panel overflow-hidden" aria-labelledby="examples-title" data-tour="examples">
       <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}
         className="flex w-full items-center gap-3 px-5 py-3.5 text-left hover:bg-canvas/60">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-teal-soft text-teal-dark"><Icon name="sparkle" className="h-4 w-4" /></span>

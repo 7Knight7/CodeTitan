@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, draftsChanged, when } from "@/lib/api";
 import BrandMemory from "@/components/BrandMemory";
+import { useTour } from "@/components/Tour";
 import Icon from "@/components/Icon";
 import { SeverityTag } from "@/components/IssueCard";
 import { Card, EmptyState, Notice, PageHeader } from "@/components/ui";
@@ -43,6 +44,7 @@ export default function WorkspacePage() {
 
   // Links such as /workspace#facts point at sections that only exist once the data has loaded.
   const loaded = !!ws;
+  useTour("workspace", loaded && !ws.empty && !(kit && (mode === "setup" || mode === "update")) && !window.location.hash);
   useEffect(() => {
     if (!loaded || !window.location.hash) return;
     const t = setTimeout(() => document.getElementById(window.location.hash.slice(1))?.scrollIntoView({ block: "start" }), 60);
@@ -164,7 +166,7 @@ export default function WorkspacePage() {
       {notice && <Notice tone="success" role="status">{notice}</Notice>}
 
       {/* Brand identity */}
-      <section className="panel overflow-hidden">
+      <section className="panel overflow-hidden" data-tour="identity">
         <div className="flex flex-wrap items-center gap-5 p-5">
           <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-canvas ring-1 ring-line">
             {ws.meta.logo ? <img src={ws.meta.logo} alt="Brand logo" className="max-h-12 max-w-[3.5rem] object-contain" /> : <span className="text-xl font-semibold text-muted">{(ws.meta.name || "?").charAt(0)}</span>}
@@ -201,7 +203,7 @@ export default function WorkspacePage() {
       )}
 
       {canEdit && (!ws.live || mode === "update") && (
-        <section id="import" className="scroll-mt-20">
+        <section id="import" className="scroll-mt-20" data-tour="import">
         <Card title={mode === "update" ? "Upload a revised PDF (optional)" : !ws.live && !ws.empty ? "Try importing a brand kit (optional)" : "Upload the brand kit"}
           sub={mode === "update" ? "Use this when the brand published a new version of its guidelines. It replaces the editor below; you can also just edit the live kit there."
             : !ws.live && !ws.empty ? "The sample brand is already loaded, so this step isn't needed. To see how importing works, read the sample PDF in one click, or upload your own."
@@ -419,7 +421,7 @@ export default function WorkspacePage() {
             </Card>
           </div>
 
-          <section id="facts" className="panel scroll-mt-20">
+          <section id="facts" className="panel scroll-mt-20" data-tour="facts">
             <div className="flex flex-wrap items-start gap-3 border-b border-line px-5 py-3.5">
               <div>
                 <h2 className="section-title"><SectionTitle icon="facts">Approved facts</SectionTitle></h2>
