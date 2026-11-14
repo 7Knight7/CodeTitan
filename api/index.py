@@ -25,7 +25,8 @@ from pydantic import BaseModel, Field  # noqa: E402
 
 from _lbc import accounts, audit, auth, brands, pdf, brandfit, brandkit, engine, memory, platforms, tone  # noqa: E402
 from _lbc.brandapply import build_workspace  # noqa: E402
-from _lbc.store import BRAND_TYPES, current_brand, get_store, seed_items, set_brand, storage_mode  # noqa: E402
+from _lbc.store import (BRAND_TYPES, current_brand, get_store, request_stats, seed_items, set_brand,  # noqa: E402
+                        start_request_cache, storage_mode)  # noqa: E402
 
 app = FastAPI(title="Live Brand Check API", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -51,9 +52,13 @@ async def guard(request: Request, call_next):
         return await call_next(request)
     if request.method in UNSAFE and request.headers.get("x-lbc") != "1":
         return JSONResponse({"detail": "Request blocked: missing X-LBC header."}, status_code=403)
+    start_request_cache()  # each record is fetched from the database at most once per request
+    started = time.perf_counter()
     try:
         if path not in PUBLIC:
             session = auth.read_token(request.cookies.get(auth.COOKIE, ""))
+            if session:
+                get_store().prefetch(["user", "brand"])  # one database call for who is signed in and their brands
             if session and accounts.mode() == "accounts":
                 session = account_session(session)
             if not session:
@@ -64,9 +69,12 @@ async def guard(request: Request, call_next):
             user = get_store().get("user", session["uid"]) if session.get("uid") else None
             request.state.brand = brands.pick(user, request.cookies.get(BRAND_COOKIE))
             set_brand(request.state.brand or NO_BRAND)
+            get_store().prefetch(["meta", "guideline", "rule", "fact"])  # the open brand's kit, in one call
         response = await call_next(request)
     except RuntimeError as exc:  # missing server configuration, never a stack trace
         return JSONResponse({"detail": f"Server is not configured: {exc}."}, status_code=500)
+    calls, db_ms = request_stats()
+    response.headers["Server-Timing"] = f'db;dur={db_ms:.0f};desc="{calls} database calls", total;dur={(time.perf_counter() - started) * 1000:.0f}'
     response.headers["Cache-Control"] = "no-store"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
@@ -2105,6 +2113,30 @@ def unblock_member(uid: Annotated[str, Field(max_length=40)], request: Request):
     get_store().put("user", accounts.unblock(user))
     log(None, s_["name"], s_["role"], "Unblocked an account", user["name"])
     return accounts.public(user)
+
+
+@app.post("/api/team/{uid}/remove")
+def remove_member(uid: Annotated[str, Field(max_length=40)], request: Request):
+    """Delete someone's account for good. Only deactivated people can be removed (deactivate first, so nobody is
+    removed by one click). Their posts, reviews and audit entries stay under their name; their email can be invited again."""
+    need_accounts()
+    s_ = need(request, ADMIN_ROLES, "remove people")
+    store = get_store()
+    user = store.get("user", uid)
+    if not user:
+        raise HTTPException(404, "Account not found.")
+    if uid == s_.get("uid"):
+        raise HTTPException(400, "You can't remove yourself.")
+    if user.get("demo"):
+        raise HTTPException(403, "Demo accounts are kept for the judges and can't be removed.")
+    if user.get("active", True):
+        raise HTTPException(409, "Deactivate this person first, then remove them.")
+    store.replace_types(["user"], [("user", u) for u in store.list("user") if u["id"] != uid])
+    for c in store.list("user"):  # nobody stays paired with a removed reviewer
+        if uid in (c.get("reviewer_ids") or []):
+            store.put("user", c | {"reviewer_ids": [r for r in c["reviewer_ids"] if r != uid]})
+    log(None, s_["name"], s_["role"], "Removed team member", f"{user['name']} ({user['email']}, {user['role']})")
+    return {"ok": True, "removed": user["name"]}
 
 
 def my_account(request):

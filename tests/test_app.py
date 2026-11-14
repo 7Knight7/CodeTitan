@@ -1013,3 +1013,33 @@ def test_marketing_head_can_remove_a_brand_completely():
     finally:
         os.environ.pop("LBC_AUTH_MODE", None)
         os.environ.pop("LBC_DEMO_ACCOUNTS", None)
+
+
+def test_marketing_head_can_remove_a_deactivated_member():
+    try:
+        c = _accounts_client()
+        os.environ["LBC_DEMO_ACCOUNTS"] = "1"
+        c.get("/api/health")
+        hc = TestClient(index.app, headers=H, cookies=_login("meera@xyz.com", "Meera@_1").cookies)
+        team = hc.get("/api/team").json()
+        priya = next(u for u in team["users"] if u["email"] == "priya@xyz.com")
+        inv = hc.post("/api/team/invites", json={"name": "Kiran", "email": "kiran@example.test", "role": "Reviewer",
+                                                 "brand_ids": ["main"], "assign": [priya["id"]]}).json()
+        TestClient(index.app, headers=H).post("/api/invite/accept", json={"token": inv["token"], "password": "Blue-harbour-7741"})
+        kiran = next(u for u in hc.get("/api/team").json()["users"] if u["email"] == "kiran@example.test")
+        assert hc.post(f"/api/team/{kiran['id']}/remove").status_code == 409  # deactivate first
+        assert hc.patch(f"/api/team/{kiran['id']}", json={"active": False}).status_code == 200
+        r = hc.post(f"/api/team/{kiran['id']}/remove")
+        assert r.status_code == 200 and r.json()["removed"] == "Kiran"
+        users = hc.get("/api/team").json()["users"]
+        assert "kiran@example.test" not in {u["email"] for u in users}
+        assert kiran["id"] not in next(u for u in users if u["email"] == "priya@xyz.com")["reviewer_ids"]
+        assert _login("kiran@example.test", "Blue-harbour-7741").status_code == 401  # can't sign in any more
+        assert hc.post("/api/team/invites", json={"name": "Kiran", "email": "kiran@example.test", "role": "Reviewer",
+                                                  "brand_ids": ["main"], "assign": [priya["id"]]}).status_code == 200  # can be invited again
+        assert hc.post(f"/api/team/{priya['id']}/remove").status_code in (403, 409)  # demo accounts stay
+        me = next(u for u in users if u["email"] == "meera@xyz.com")
+        assert hc.post(f"/api/team/{me['id']}/remove").status_code == 400
+    finally:
+        os.environ.pop("LBC_AUTH_MODE", None)
+        os.environ.pop("LBC_DEMO_ACCOUNTS", None)

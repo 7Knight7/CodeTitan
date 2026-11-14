@@ -18,6 +18,7 @@ import copy
 import json
 import os
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -140,6 +141,10 @@ class LocalStore:
     def list(self, type_):
         return list(self._load().get(type_, {}).values())
 
+    def list_many(self, types):
+        db = self._load()
+        return {t: list(db.get(t, {}).values()) for t in types}
+
     def replace_types(self, types, items):
         with self.lock:
             db = self._load()
@@ -187,6 +192,15 @@ class SupabaseStore:
         r.raise_for_status()
         return [row["data"] for row in r.json()]
 
+    def list_many(self, types):
+        """Several types in one round trip."""
+        r = self.client.get(self.base, params={"type": f"in.({','.join(types)})", "select": "type,data", "order": "created_at.asc"}, headers=self.h)
+        r.raise_for_status()
+        out = {t: [] for t in types}
+        for row in r.json():
+            out.setdefault(row["type"], []).append(row["data"])
+        return out
+
     def get(self, type_, id_):
         r = self.client.get(self.base, params={"id": f"eq.{self._key(type_, id_)}", "select": "data"}, headers=self.h)
         r.raise_for_status()
@@ -198,6 +212,97 @@ class SupabaseStore:
         h = self.h | {"Prefer": "resolution=merge-duplicates"}
         self.client.post(self.base, json=row, headers=h).raise_for_status()
         return data
+
+
+# ---------- per-request cache ----------
+# On Vercel every store call is a round trip to Supabase. One page load used to make the same calls many times
+# (the signed-in user, the brand list, the kit...). During an API request each type or record is fetched at most
+# once; writes update the cache, so a request always reads its own writes. Outside requests nothing is cached.
+_cache = contextvars.ContextVar("lbc_cache", default=None)
+
+
+def start_request_cache():
+    _cache.set({"lists": {}, "items": {}, "calls": 0, "ms": 0.0})
+
+
+def request_stats():
+    """(database calls, milliseconds spent in them) for the current request."""
+    c = _cache.get()
+    return (c["calls"], c["ms"]) if c else (0, 0.0)
+
+
+class CachingStore:
+    def __init__(self, raw):
+        self.raw = raw
+
+    def __getattr__(self, name):  # e.g. LocalStore.path in tests
+        return getattr(self.raw, name)
+
+    def _call(self, c, fn, *args):
+        t = time.perf_counter()
+        try:
+            return fn(*args)
+        finally:
+            c["calls"] += 1
+            c["ms"] += (time.perf_counter() - t) * 1000
+
+    def list(self, type_):
+        c = _cache.get()
+        if c is None:
+            return self.raw.list(type_)
+        if type_ not in c["lists"]:
+            c["lists"][type_] = {d["id"]: d for d in self._call(c, self.raw.list, type_)}
+        return copy.deepcopy(list(c["lists"][type_].values()))
+
+    def prefetch(self, types):
+        """Load several whole types in one database call (only those not loaded yet in this request)."""
+        c = _cache.get()
+        missing = [t for t in types if c is not None and t not in c["lists"]]
+        if not missing:
+            return
+        got = self._call(c, self.raw.list_many, missing)
+        for t in missing:
+            c["lists"][t] = {d["id"]: d for d in got.get(t, [])}
+
+    def get(self, type_, id_):
+        c = _cache.get()
+        if c is None:
+            return self.raw.get(type_, id_)
+        if type_ in c["lists"]:
+            return copy.deepcopy(c["lists"][type_].get(id_))
+        key = (type_, id_)
+        if key not in c["items"]:
+            c["items"][key] = self._call(c, self.raw.get, type_, id_)
+        return copy.deepcopy(c["items"][key])
+
+    def put(self, type_, data):
+        c = _cache.get()
+        if c is None:
+            return self.raw.put(type_, data)
+        out = self._call(c, self.raw.put, type_, data)
+        snap = copy.deepcopy(data)
+        if type_ in c["lists"]:
+            c["lists"][type_][data["id"]] = snap
+        c["items"][(type_, data["id"])] = snap
+        return out
+
+    def replace_types(self, types, items):
+        c = _cache.get()
+        if c is None:
+            return self.raw.replace_types(types, items)
+        self._call(c, self.raw.replace_types, types, items)
+        for t in types:
+            c["lists"][t] = {}
+        c["items"] = {k: v for k, v in c["items"].items() if k[0] not in types}
+        for t, d in items:
+            c["lists"].setdefault(t, {})[d["id"]] = copy.deepcopy(d)
+
+    def reset(self):
+        self.raw.reset()
+        c = _cache.get()
+        if c is not None:
+            c["lists"].clear()
+            c["items"].clear()
 
 
 class ScopedStore:
@@ -221,6 +326,10 @@ class ScopedStore:
     def replace_types(self, types, items):
         self.base.replace_types([self._t(t) for t in types], [(self._t(t), d) for t, d in items])
 
+    def prefetch(self, types):
+        if hasattr(self.base, "prefetch"):
+            self.base.prefetch([self._t(t) for t in types])
+
     def reset(self):
         """The main brand resets everything (as before multi-brand); another brand restores only its own data
         to the sample brand."""
@@ -231,6 +340,7 @@ class ScopedStore:
 
 
 _store = None
+_cached = None
 
 
 def base_store():
@@ -244,6 +354,13 @@ def get_store():
 
 
 def _base():
+    global _store, _cached
+    if _cached is None:
+        _cached = CachingStore(_raw())
+    return _cached
+
+
+def _raw():
     global _store
     if _store is None:
         url = os.environ.get("SUPABASE_URL")
@@ -256,4 +373,4 @@ def _base():
 
 
 def storage_mode():
-    return "supabase" if isinstance(_base(), SupabaseStore) else "local"
+    return "supabase" if isinstance(_raw(), SupabaseStore) else "local"

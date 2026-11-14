@@ -213,6 +213,13 @@ function Members({ users, me, onChange, brands }) {
     setError("");
     try { await api(`/team/${uid}`, { method: "PATCH", body }); onChange(); } catch (e) { setError(e.message); }
   };
+  const remove = async (u) => {
+    if (!window.confirm(`Remove ${u.name} (${u.email}) from Live Brand Check for good?
+
+Their account is deleted and they can no longer sign in. Posts, reviews and history they were part of are kept under their name. You can invite this email again later.`)) return;
+    setError("");
+    try { await api(`/team/${u.id}/remove`, { method: "POST" }); onChange(); } catch (e) { setError(e.message); }
+  };
   const unblock = async (u) => {
     setError("");
     try { await api(`/team/${u.id}/unblock`, { method: "POST" }); onChange(); } catch (e) { setError(e.message); }
@@ -294,7 +301,10 @@ function Members({ users, me, onChange, brands }) {
                   </td>
                   <td className="px-3 py-3 text-xs text-muted">{u.last_login ? when(u.last_login) : "Never"}</td>
                   <td className="px-5 py-3 text-right">
-                    {!self && <button className={`btn btn-sm ${u.active ? "" : "btn-teal"}`} onClick={() => act(u.id, { active: !u.active })}>{u.active ? "Deactivate" : "Reactivate"}</button>}
+                    <span className="inline-flex flex-wrap justify-end gap-2">
+                      {!self && <button className={`btn btn-sm ${u.active ? "" : "btn-teal"}`} onClick={() => act(u.id, { active: !u.active })}>{u.active ? "Deactivate" : "Reactivate"}</button>}
+                      {!self && !u.active && !u.demo && <button className="btn btn-sm btn-danger" onClick={() => remove(u)}>Remove</button>}
+                    </span>
                   </td>
                 </tr>
               );
@@ -302,7 +312,7 @@ function Members({ users, me, onChange, brands }) {
           </tbody>
         </table>
       </div>
-      <p className="border-t border-line px-5 py-3 text-xs text-muted">Creators and reviewers see only the brands they work on. Only a creator&rsquo;s paired reviewers (and the marketing head) can approve or send back that creator&rsquo;s posts. Sign-in pauses for 15 minutes after 3 wrong passwords and the account is blocked after 5, until you unblock it. Changing someone&rsquo;s role or deactivating them signs them out straight away.</p>
+      <p className="border-t border-line px-5 py-3 text-xs text-muted">Creators and reviewers see only the brands they work on. Only a creator&rsquo;s paired reviewers (and the marketing head) can approve or send back that creator&rsquo;s posts. Sign-in pauses for 15 minutes after 3 wrong passwords and the account is blocked after 5, until you unblock it. Changing someone&rsquo;s role or deactivating them signs them out straight away. To delete someone entirely, deactivate them, then press Remove.</p>
     </Card>
   );
 }
