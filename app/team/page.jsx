@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { api, when } from "@/lib/api";
 import { useRole } from "@/components/RoleProvider";
 import { Card, EmptyState, Notice, PageHeader } from "@/components/ui";
@@ -213,12 +214,11 @@ function Members({ users, me, onChange, brands }) {
     setError("");
     try { await api(`/team/${uid}`, { method: "PATCH", body }); onChange(); } catch (e) { setError(e.message); }
   };
+  const [removing, setRemoving] = useState(null); // the person being removed (shows the confirmation)
   const remove = async (u) => {
-    if (!window.confirm(`Remove ${u.name} (${u.email}) from Live Brand Check for good?
-
-Their account is deleted and they can no longer sign in. Posts, reviews and history they were part of are kept under their name. You can invite this email again later.`)) return;
     setError("");
-    try { await api(`/team/${u.id}/remove`, { method: "POST" }); onChange(); } catch (e) { setError(e.message); }
+    try { await api(`/team/${u.id}/remove`, { method: "POST" }); setRemoving(null); onChange(); }
+    catch (e) { setRemoving(null); setError(e.message); }
   };
   const unblock = async (u) => {
     setError("");
@@ -250,7 +250,7 @@ Their account is deleted and they can no longer sign in. Posts, reviews and hist
               const pairs = pairIds(u).map((id) => byId[id]).filter(Boolean);
               const isEditing = editing?.id === u.id;
               return (
-                <tr key={u.id} className={`border-b border-line align-top last:border-0 ${u.active ? "" : "opacity-60"}`}>
+                <tr key={u.id} className={`border-b border-line align-top last:border-0 ${u.active ? "" : "[&>td:not(:last-child)]:opacity-60"}`}>
                   <td className="px-5 py-3"><span className="block font-medium">{u.name}{self && <span className="text-muted"> (you)</span>}</span><span className="block text-xs text-muted">{u.email}</span></td>
                   <td className="px-3 py-3">
                     {self || !u.active ? u.role : (
@@ -303,7 +303,7 @@ Their account is deleted and they can no longer sign in. Posts, reviews and hist
                   <td className="px-5 py-3 text-right">
                     <span className="inline-flex flex-wrap justify-end gap-2">
                       {!self && <button className={`btn btn-sm ${u.active ? "" : "btn-teal"}`} onClick={() => act(u.id, { active: !u.active })}>{u.active ? "Deactivate" : "Reactivate"}</button>}
-                      {!self && !u.active && !u.demo && <button className="btn btn-sm btn-danger" onClick={() => remove(u)}>Remove</button>}
+                      {!self && !u.active && !u.demo && <button className="btn btn-sm btn-danger" onClick={() => setRemoving(u)}>Remove</button>}
                     </span>
                   </td>
                 </tr>
@@ -313,7 +313,47 @@ Their account is deleted and they can no longer sign in. Posts, reviews and hist
         </table>
       </div>
       <p className="border-t border-line px-5 py-3 text-xs text-muted">Creators and reviewers see only the brands they work on. Only a creator&rsquo;s paired reviewers (and the marketing head) can approve or send back that creator&rsquo;s posts. Sign-in pauses for 15 minutes after 3 wrong passwords and the account is blocked after 5, until you unblock it. Changing someone&rsquo;s role or deactivating them signs them out straight away. To delete someone entirely, deactivate them, then press Remove.</p>
+      {removing && <RemoveDialog person={removing} onCancel={() => setRemoving(null)} onConfirm={() => remove(removing)} />}
     </Card>
+  );
+}
+
+/** In-app confirmation before deleting someone's account. Rendered on the page body: the glass cards would
+    otherwise trap a fixed pop-up inside themselves. */
+function RemoveDialog({ person, onCancel, onConfirm }) {
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const onKey = (e) => e.key === "Escape" && !busy && onCancel();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel, busy]);
+  return createPortal(
+    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-navy/50 p-4 backdrop-blur-[2px] sm:items-center" role="presentation" onClick={() => !busy && onCancel()}>
+      <div role="alertdialog" aria-modal="true" aria-labelledby="remove-title" aria-describedby="remove-desc"
+        className="pop-in w-full max-w-md overflow-hidden rounded-lg bg-surface shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="p-5">
+          <div className="flex items-start gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blocker-soft text-blocker"><Icon name="user" className="h-5 w-5" /></span>
+            <div className="min-w-0">
+              <h2 id="remove-title" className="text-lg font-semibold">Remove {person.name}?</h2>
+              <p className="mt-0.5 truncate text-sm text-muted">{person.email} · {person.role}</p>
+            </div>
+          </div>
+          <div id="remove-desc" className="mt-4 space-y-2 text-sm">
+            <p className="flex gap-2"><Icon name="x" className="mt-0.5 h-4 w-4 shrink-0 text-blocker" />Their account is deleted and they can no longer sign in.</p>
+            <p className="flex gap-2"><Icon name="check" className="mt-0.5 h-4 w-4 shrink-0 text-approved" />Posts, reviews and history they were part of are kept under their name.</p>
+            <p className="flex gap-2"><Icon name="check" className="mt-0.5 h-4 w-4 shrink-0 text-approved" />You can invite this email again later.</p>
+          </div>
+          <Notice tone="error" className="mt-4">This can&rsquo;t be undone.</Notice>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-line bg-canvas px-5 py-3">
+          <button className="btn btn-quiet" disabled={busy} onClick={onCancel} autoFocus>Cancel</button>
+          <button className="btn bg-blocker-vivid text-white hover:opacity-90" disabled={busy}
+            onClick={() => { setBusy(true); onConfirm(); }}>{busy ? "Removing…" : "Remove person"}</button>
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
 
