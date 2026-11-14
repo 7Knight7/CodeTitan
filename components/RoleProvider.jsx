@@ -1,7 +1,8 @@
 "use client";
 import { createContext, useContext, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { api } from "@/lib/api";
+import { api, PUBLIC_PAGES } from "@/lib/api";
+import { becomePerson } from "@/lib/person";
 
 export const ROLES = {
   Creator: "Priya (social media)",
@@ -11,8 +12,8 @@ export const ROLES = {
 
 // Pages each role can open (null = all). The server enforces the same limits on its data.
 const PAGES = {
-  Creator: ["/", "/overview", "/review", "/workspace", "/drafts"],
-  Reviewer: ["/overview", "/review", "/workspace", "/insights", "/analytics", "/drafts"],
+  Creator: ["/", "/overview", "/review", "/workspace", "/drafts", "/account", "/team"],
+  Reviewer: ["/overview", "/review", "/workspace", "/insights", "/analytics", "/drafts", "/account", "/team"],
   "Marketing head": null,
 };
 const HOME = { Creator: "/", Reviewer: "/review", "Marketing head": "/" };
@@ -33,21 +34,22 @@ export function RoleProvider({ children }) {
   const router = useRouter();
   const [person, setPerson] = useState(null);
   useEffect(() => {
-    if (path === "/login") return;
-    api("/session").then((s) => setPerson({ role: s.role, name: s.name })).catch(() => {});
+    if (PUBLIC_PAGES.includes(path)) return;
+    api("/session").then((s) => setPerson(s)).catch(() => {});
   }, [path]);
   useEffect(() => {
-    if (person && path !== "/login" && !canSee(person.role, path)) router.replace(homeFor(person.role));
+    if (!person || PUBLIC_PAGES.includes(path)) return;
+    if (!canSee(person.role, path)) router.replace(homeFor(person.role));
   }, [person, path, router]);
   const setRole = async (role) => {
-    await api("/session/role", { method: "POST", body: { role } });
+    await becomePerson(role, person);
     window.location.href = canSee(role, window.location.pathname) ? window.location.href : homeFor(role);
   };
   const signOut = async () => {
     await api("/logout", { method: "POST" }).catch(() => {});
     window.location.href = "/login";
   };
-  const blocked = person && path !== "/login" && !canSee(person.role, path);
+  const blocked = person && !PUBLIC_PAGES.includes(path) && !canSee(person.role, path);
   return <RoleContext.Provider value={{ person, setRole, signOut }}>{blocked ? null : children}</RoleContext.Provider>;
 }
 

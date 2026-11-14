@@ -10,4 +10,4 @@ export function middleware(req) {
   return NextResponse.redirect(url);
 }
 
-export const config = { matcher: ["/((?!login|api|_next|favicon.ico).*)"] };
+export const config = { matcher: ["/((?!login|setup|invite|api|_next|favicon.ico).*)"] };

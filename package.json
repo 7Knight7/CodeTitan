@@ -6,7 +6,8 @@
     "dev": "next dev",
     "api": "uvicorn index:app --app-dir api --port 8000 --reload",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "extension": "node extension/build.mjs"
   },
   "dependencies": {
     "next": "^14.2.15",

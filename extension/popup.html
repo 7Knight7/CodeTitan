@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Live Brand Check</title>
+<style>
+  :root { color-scheme: light dark; --bg:#fff; --ink:#16181d; --muted:#5b6472; --line:#dde1e8; --accent:#3156b8; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1b1e24; --ink:#e8eaee; --muted:#9aa3b2; --line:#2c313a; --accent:#8fa9ec; } }
+  body { margin:0; width:300px; padding:14px; background:var(--bg); color:var(--ink); font:13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  h1 { font-size:15px; margin:0 0 4px; } p { margin:6px 0; } .muted { color:var(--muted); font-size:12px; }
+  label { display:block; margin-top:10px; font-weight:600; } input[type=url] { width:100%; box-sizing:border-box; margin-top:4px; padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:transparent; color:inherit; }
+  .row { display:flex; gap:8px; align-items:center; margin-top:10px; } button { font:inherit; padding:6px 10px; border-radius:8px; border:1px solid var(--line); background:transparent; color:inherit; cursor:pointer; }
+  a { color:var(--accent); } #status { padding:8px; border:1px solid var(--line); border-radius:8px; margin-top:8px; }
+</style>
+</head>
+<body>
+  <h1>Live Brand Check</h1>
+  <p class="muted">Checks Instagram and Facebook posts while you write: captions, images and banners. It only reads; nothing is changed or posted for you.</p>
+  <div id="status">Checking sign-in…</div>
+  <div class="row"><input type="checkbox" id="enabled"><span>Check posts on Instagram and Facebook</span></div>
+  <label for="server">Live Brand Check address</label>
+  <input type="url" id="server" placeholder="https://live-brand-check.vercel.app">
+  <div class="row"><button id="save">Save</button><a id="open" target="_blank" rel="noopener">Open Live Brand Check</a></div>
+  <p class="muted">Images are read on this device. Only the text read from them, a few measurements and a small preview go to your Live Brand Check server.</p>
+  <script src="popup.js"></script>
+</body>
+</html>

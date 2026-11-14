@@ -1,7 +1,7 @@
 "use client";
 import { createContext, useContext, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { api, DRAFTS_EVENT } from "@/lib/api";
+import { api, DRAFTS_EVENT, PUBLIC_PAGES } from "@/lib/api";
 import Nav from "./Nav";
 import { TourProvider } from "./Tour";
 
@@ -20,14 +20,14 @@ export default function Shell({ children }) {
   const toggle = () => setCollapsed((c) => { try { localStorage.setItem(KEY, c ? "0" : "1"); } catch { /* ignore */ } return !c; });
 
   useEffect(() => {
-    if (path === "/login") return;
+    if (PUBLIC_PAGES.includes(path)) return;
     const load = () => api("/workspace").then((w) => setWorkspace({ name: w.meta?.name, live: !!w.live, empty: !!w.empty })).catch(() => {});
     load();
     window.addEventListener(DRAFTS_EVENT, load);
     return () => window.removeEventListener(DRAFTS_EVENT, load);
   }, [path]);
 
-  if (path === "/login") return children;
+  if (PUBLIC_PAGES.includes(path)) return children;
   return (
     <WorkspaceContext.Provider value={workspace}>
       <TourProvider>
@@ -38,7 +38,7 @@ export default function Shell({ children }) {
           <footer className="border-t border-line/70 py-6 text-xs leading-relaxed text-muted">
             <p className="max-w-3xl">
               Demo data is fictional. Post images are read in your browser; only a small preview is saved so reviewers can see the post. Posts are checked with fixed rules
-              and your approved facts, not AI. Brand kit PDFs may be read with an AI service if one is configured; every item is confirmed by a person.
+              and your approved facts, not AI. Brand kit PDFs are read on our server without AI, and every item is confirmed by a person.
             </p>
           </footer>
         </div>

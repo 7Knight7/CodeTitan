@@ -628,3 +628,388 @@ def test_pdf_reader_finds_tone_positioning_and_banned_words():
     assert kit["tone_rules"][0]["text"] == "Trusted, global and secure."
     assert any(g["section"] == "Positioning" and g["text"].startswith("We connect families") for g in kit["guidelines"])
     assert {"security", "fraud"} <= {t["text"] for t in kit["sensitive_topics"]}
+
+
+# ---------- personal accounts, invitations and the wrong-password lock ----------
+
+def _accounts_client():
+    """Accounts mode with no accounts yet (accounts survive a demo reset, so clear them here)."""
+    import json
+    os.environ["LBC_AUTH_MODE"] = "accounts"
+    os.environ["LBC_DEMO_ACCOUNTS"] = "0"  # tests that need them switch them on
+    from _lbc.store import base_store
+    get_store().reset()
+    st = base_store()
+    db = json.loads(st.path.read_text())
+    db["user"], db["invite"] = {}, {}
+    st.path.write_text(json.dumps(db))
+    auth._attempts.clear()
+    return TestClient(index.app, headers=H)
+
+
+def _login(email, password):
+    auth._attempts.clear()  # the per-device limit is tested separately; here we test the per-account rule
+    return TestClient(index.app, headers=H).post("/api/login/account", json={"email": email, "password": password})
+
+
+def test_accounts_setup_invites_and_roles():
+    from _lbc import accounts
+    try:
+        c = _accounts_client()
+        h = c.get("/api/health").json()
+        assert h["auth_mode"] == "accounts" and h["setup_needed"] is True
+        assert c.post("/api/login", json={"role": "Marketing head"}).status_code == 400  # no role picking
+        # first account: a marketing head, with a strong password
+        assert c.post("/api/setup", json={"name": "Meera Rao", "email": "meera@example.com", "password": "short"}).status_code == 400
+        r = c.post("/api/setup", json={"name": "Meera Rao", "email": "Meera@Example.com", "password": "orange teal sunrise 42"})
+        assert r.status_code == 200 and r.json()["role"] == "Marketing head"
+        assert c.post("/api/setup", json={"name": "X Y", "email": "x@example.com", "password": "another long pass 9"}).status_code == 409
+        assert c.get("/api/drafts").status_code == 200
+        assert c.post("/api/session/role", json={"role": "Creator"}).status_code == 403  # roles belong to accounts
+
+        # invitations are one-time links; only a hash of the token is stored
+        token = c.post("/api/team/invites", json={"name": "Priya S", "email": "priya@example.com", "role": "Creator"}).json()["token"]
+        rev_token = c.post("/api/team/invites", json={"name": "Arjun K", "email": "arjun@example.com", "role": "Reviewer"}).json()["token"]
+        assert all(token not in str(i) for i in get_store().list("invite"))
+        p = TestClient(index.app, headers=H)
+        assert p.post("/api/invite/lookup", json={"token": token}).json()["role"] == "Creator"
+        assert p.post("/api/invite/accept", json={"token": token, "password": "priya@example"}).status_code == 400
+        assert p.post("/api/invite/accept", json={"token": token, "password": "mangoes are tasty 7"}).status_code == 200
+        assert p.post("/api/invite/accept", json={"token": token, "password": "mangoes are tasty 7"}).status_code == 404
+        assert p.get("/api/session").json()["name"] == "Priya S"
+        assert p.get("/api/team").status_code == 403  # creators can't manage the team
+        a = TestClient(index.app, headers=H)
+        a.post("/api/invite/accept", json={"token": rev_token, "password": "reviewing all day 3"})
+
+        # a post written by Priya is approved by Arjun, by name and by account
+        d = p.post("/api/drafts", json={"title": "t", "content": "Northstar Civils Academy classes resume Monday."}).json()
+        assert d["author"] == "Priya S" and d["author_id"] == accounts.user_id("priya@example.com")
+        assert p.post(f"/api/drafts/{d['id']}/submit").status_code == 200
+        assert a.post(f"/api/drafts/{d['id']}/review", json={"action": "approve"}).json()["review"]["by"] == "Arjun K"
+
+        # role change and deactivation take effect at once
+        priya_id = accounts.user_id("priya@example.com")
+        assert c.patch(f"/api/team/{priya_id}", json={"role": "Reviewer"}).json()["role"] == "Reviewer"
+        assert p.get("/api/session").status_code == 401  # old session ended
+        assert c.patch(f"/api/team/{accounts.user_id('meera@example.com')}", json={"active": False}).status_code == 400  # not yourself
+        c.patch(f"/api/team/{priya_id}", json={"active": False})
+        assert _login("priya@example.com", "mangoes are tasty 7").status_code == 401
+
+        # changing the password signs out other devices; accounts survive a demo reset
+        m = TestClient(index.app, headers=H)
+        assert m.post("/api/login/account", json={"email": "meera@example.com", "password": "orange teal sunrise 42"}).status_code == 200
+        assert c.post("/api/account/password", json={"current": "orange teal sunrise 42", "new": "new strong phrase 88"}).status_code == 200
+        assert m.get("/api/session").status_code == 401
+        c.post("/api/reset")
+        assert get_store().get("user", accounts.user_id("meera@example.com"))
+    finally:
+        os.environ.pop("LBC_AUTH_MODE", None)
+        os.environ.pop("LBC_DEMO_ACCOUNTS", None)
+        auth._attempts.clear()
+
+
+def test_three_wrong_passwords_pause_and_five_block():
+    from datetime import timedelta
+    from _lbc import accounts
+    try:
+        c = _accounts_client()
+        c.post("/api/setup", json={"name": "Meera Rao", "email": "meera@example.com", "password": "orange teal sunrise 42"})
+        tok = c.post("/api/team/invites", json={"name": "Arjun K", "email": "arjun@example.com", "role": "Reviewer"}).json()["token"]
+        TestClient(index.app, headers=H).post("/api/invite/accept", json={"token": tok, "password": "reviewing all day 3"})
+        uid = accounts.user_id("arjun@example.com")
+
+        r1, r2 = _login("arjun@example.com", "wrong guess one"), _login("arjun@example.com", "wrong guess two")
+        assert r1.status_code == 401 and "2 more wrong attempts" in r1.json()["detail"]
+        assert "1 more wrong attempt" in r2.json()["detail"]
+        r3 = _login("arjun@example.com", "wrong guess three")
+        assert r3.status_code == 429 and "Try again in 15 minutes" in r3.json()["detail"]
+        # during the 15 minutes even the right password is refused, and the attempt isn't counted
+        assert _login("arjun@example.com", "reviewing all day 3").status_code == 429
+        assert get_store().get("user", uid)["failed"] == 3
+
+        # time passes: the timer ends, then 2 more wrong passwords block the account
+        u = get_store().get("user", uid)
+        get_store().put("user", u | {"locked_until": accounts.iso(accounts.now_dt() - timedelta(minutes=1))})
+        assert "1 more wrong attempt" in _login("arjun@example.com", "wrong guess four").json()["detail"]
+        r5 = _login("arjun@example.com", "wrong guess five")
+        assert r5.status_code == 423 and "blocked" in r5.json()["detail"]
+        assert _login("arjun@example.com", "reviewing all day 3").status_code == 423  # blocked even with the right password
+        row = next(x for x in c.get("/api/team").json()["users"] if x["id"] == uid)
+        assert row["blocked"] is True
+
+        # only a marketing head can unblock; then the right password works and the count starts again
+        a = TestClient(index.app, headers=H)
+        assert a.post(f"/api/team/{uid}/unblock").status_code == 401
+        assert c.post(f"/api/team/{uid}/unblock").json()["blocked"] is False
+        assert _login("arjun@example.com", "reviewing all day 3").status_code == 200
+        assert get_store().get("user", uid)["failed"] == 0
+
+        # a correct password before the limit resets the count
+        _login("arjun@example.com", "one wrong guess")
+        assert _login("arjun@example.com", "reviewing all day 3").status_code == 200
+        assert get_store().get("user", uid)["failed"] == 0
+        # unknown emails get the same plain message
+        assert _login("nobody@example.com", "whatever pass 1").json()["detail"] == "Wrong email or password."
+    finally:
+        os.environ.pop("LBC_AUTH_MODE", None)
+        os.environ.pop("LBC_DEMO_ACCOUNTS", None)
+        auth._attempts.clear()
+
+
+def test_demo_accounts_shown_paused_but_never_blocked():
+    from _lbc import accounts
+    try:
+        c = _accounts_client()
+        os.environ["LBC_DEMO_ACCOUNTS"] = "1"
+        h = c.get("/api/health").json()
+        assert [a["email"] for a in h["demo_accounts"]] == ["meera@xyz.com", "priya@xyz.com", "arjun@xyz.com"]
+        assert h["setup_needed"] is False
+        assert _login("meera@xyz.com", "Meera@_1").json()["role"] == "Marketing head"
+        p = TestClient(index.app, headers=H)
+        assert p.post("/api/login/account", json={"email": "priya@xyz.com", "password": "Priya@_1"}).json()["role"] == "Creator"
+        assert p.post("/api/account/password", json={"current": "Priya@_1", "new": "something else long 1"}).status_code == 403
+        m = TestClient(index.app, headers=H)
+        m.post("/api/login/account", json={"email": "meera@xyz.com", "password": "Meera@_1"})
+        assert m.patch(f"/api/team/{accounts.user_id('priya@xyz.com')}", json={"active": False}).status_code == 400
+        # 3 wrong = 15-minute pause, but the count restarts, so 5 wrong never blocks a demo account
+        for i in range(3):
+            r = _login("arjun@xyz.com", f"wrong guess {i}")
+        assert r.status_code == 429 and "blocked" not in r.json()["detail"]
+        u = get_store().get("user", accounts.user_id("arjun@xyz.com"))
+        assert u["failed"] == 0 and not u.get("blocked")
+        get_store().put("user", u | {"locked_until": None})
+        for i in range(2):
+            _login("arjun@xyz.com", f"more wrong {i}")
+        assert not get_store().get("user", accounts.user_id("arjun@xyz.com")).get("blocked")
+        assert _login("arjun@xyz.com", "Arjun@_1").status_code == 200
+        os.environ["LBC_DEMO_ACCOUNTS"] = "0"
+        assert c.get("/api/health").json()["demo_accounts"] == []  # can be switched off for real use
+    finally:
+        os.environ.pop("LBC_AUTH_MODE", None)
+        os.environ.pop("LBC_DEMO_ACCOUNTS", None)
+        auth._attempts.clear()
+
+
+def test_creators_are_reviewed_only_by_their_paired_reviewers():
+    from _lbc import accounts
+    try:
+        c = _accounts_client()
+        c.post("/api/setup", json={"name": "Meera Rao", "email": "meera@example.com", "password": "orange teal sunrise 42"})
+
+        def join(name, email, role, assign=()):
+            r = c.post("/api/team/invites", json={"name": name, "email": email, "role": role, "assign": list(assign)})
+            assert r.status_code == 200, r.text
+            t = TestClient(index.app, headers=H)
+            assert t.post("/api/invite/accept", json={"token": r.json()["token"], "password": f"{role.lower()} strong pass 9"}).status_code == 200
+            return t, accounts.user_id(email)
+
+        # the first reviewer has no creator to pick yet, so the pairing is optional
+        arjun, arjun_id = join("Arjun K", "arjun@example.com", "Reviewer")
+        # a creator must now be paired with a reviewer
+        assert c.post("/api/team/invites", json={"name": "Priya S", "email": "priya@example.com", "role": "Creator"}).status_code == 400
+        assert c.post("/api/team/invites", json={"name": "Priya S", "email": "priya@example.com", "role": "Creator",
+                                                 "assign": [accounts.user_id("meera@example.com")]}).status_code == 400  # not a reviewer
+        priya, priya_id = join("Priya S", "priya@example.com", "Creator", [arjun_id])
+        # a second reviewer is invited for a creator; several each way are allowed
+        neha, neha_id = join("Neha R", "neha@example.com", "Reviewer", [priya_id])
+        ravi, ravi_id = join("Ravi T", "ravi@example.com", "Reviewer", [priya_id])
+        team = {u["id"]: u for u in c.get("/api/team").json()["users"]}
+        assert set(team[priya_id]["reviewer_ids"]) == {arjun_id, neha_id, ravi_id}
+        assert team[arjun_id]["creator_ids"] == [priya_id]
+
+        # take Ravi off Priya: now only Arjun and Neha (or the marketing head) may review her posts
+        r = c.put(f"/api/team/{ravi_id}/assignments", json={"ids": []}).json()
+        assert r["creator_ids"] == []
+        d = priya.post("/api/drafts", json={"title": "t", "content": "Northstar Civils Academy classes resume Monday."}).json()
+        assert priya.post(f"/api/drafts/{d['id']}/submit").status_code == 200
+        seen = ravi.get(f"/api/drafts/{d['id']}").json()
+        assert seen["can_review"] is False and set(seen["assigned_reviewers"]) == {"Arjun K", "Neha R"}
+        assert ravi.post(f"/api/drafts/{d['id']}/review", json={"action": "approve"}).status_code == 403
+        listed = next(x for x in arjun.get("/api/drafts?status=in_review").json() if x["id"] == d["id"])
+        assert listed["can_review"] is True
+        assert neha.post(f"/api/drafts/{d['id']}/review", json={"action": "request_changes", "comment": "Add the batch date"}).status_code == 200
+
+        # the marketing head can always review; a creator whose reviewers all left can be reviewed by anyone
+        assert priya.post(f"/api/drafts/{d['id']}/submit").status_code == 200
+        c.patch(f"/api/team/{arjun_id}", json={"active": False})
+        c.patch(f"/api/team/{neha_id}", json={"active": False})
+        assert ravi.get(f"/api/drafts/{d['id']}").json()["can_review"] is True
+        # changing Priya's role drops her pairing
+        c.patch(f"/api/team/{priya_id}", json={"role": "Reviewer"})
+        assert "reviewer_ids" not in get_store().get("user", priya_id)
+    finally:
+        os.environ.pop("LBC_AUTH_MODE", None)
+        os.environ.pop("LBC_DEMO_ACCOUNTS", None)
+        auth._attempts.clear()
+
+
+# ---------- Round 3: trusted history and AI tone ----------
+
+FIXED_POST = ("Northstar Civils Academy for UPSC. 32 students from our paid full course and 18 from our free "
+              "interview-guidance programme qualified this year. Structured mentoring and weekly mock tests. "
+              "Foundation course fee for the 2026-27 batch: Rs 48,000.")
+
+
+def _approved_post(c):
+    d = c.post("/api/drafts", json={"title": "Fee post", "content": FIXED_POST}).json()
+    assert c.post(f"/api/drafts/{d['id']}/submit").json()["status"] == "in_review"
+    as_role(c, "Reviewer")
+    ok = c.post(f"/api/drafts/{d['id']}/review", json={"action": "approve"}).json()
+    assert ok["status"] == "approved"
+    return ok
+
+
+def test_approval_reopens_when_a_relied_on_fact_changes():
+    get_store().reset()
+    c = client("Creator")
+    d = _approved_post(c)
+    assert "F1" in {e["fact_id"] for e in d["evidence"]}
+    as_role(c, "Marketing head")
+    r = c.put("/api/facts/F2", json={"amount": 46000}).json()  # a fact this post did not rely on
+    assert r["reopened_posts"] == 0 and c.get(f"/api/drafts/{d['id']}").json()["status"] == "approved"
+    r = c.put("/api/facts/F1", json={"amount": 52000}).json()
+    assert r["reopened_posts"] == 1
+    back = c.get(f"/api/drafts/{d['id']}").json()
+    assert back["status"] == "in_review" and "changed after this post was approved" in back["reopened"]["reasons"][0]
+    assert any(f["rule_id"].startswith("FACT-") for f in back["findings"])  # re-checked against the new fee
+    assert "Approval reopened" in [e["action"] for e in back["events"]]
+    assert c.get("/api/drafts?status=in_review").json()[0]["reopened"]
+
+
+def test_audit_log_is_hash_linked_and_detects_tampering():
+    get_store().reset()
+    c = client("Creator")
+    _approved_post(c)
+    v = c.get("/api/audit/verify").json()
+    assert v["ok"] and v["entries"] >= 4 and v["legacy"] == 0
+    store = get_store()
+    events = sorted(store.list("event"), key=lambda e: e["seq"])
+    victim = dict(events[2], detail="rewritten later")
+    store.put("event", victim)
+    bad = c.get("/api/audit/verify").json()
+    assert not bad["ok"] and bad["broken_at"]["seq"] == victim["seq"] and "changed" in bad["broken_at"]["reason"]
+
+
+def test_approval_record_pdf():
+    get_store().reset()
+    c = client("Creator")
+    d = _approved_post(c)
+    r = c.get(f"/api/drafts/{d['id']}/record.pdf")
+    assert r.status_code == 200 and r.headers["content-type"] == "application/pdf"
+    assert r.content.startswith(b"%PDF-1.4") and r.content.rstrip().endswith(b"%%EOF")
+    assert b"Approval record" in r.content and b"Arjun" in r.content and b"fingerprint" in r.content
+    other = c.post("/api/drafts", json={"content": "Weekly mock tests at Northstar Civils Academy"})
+    as_role(c, "Creator")
+    other = c.post("/api/drafts", json={"content": "Weekly mock tests at Northstar Civils Academy"}).json()
+    assert c.get(f"/api/drafts/{other['id']}/record.pdf").status_code == 409
+
+
+def test_tone_check_is_rule_based_and_cites_the_tone_guideline():
+    from _lbc import tone
+    get_store().reset()
+    c = client("Creator")
+    text = "Hurry, last chance to join!!! Northstar Civils Academy weekly mock tests are amazing. JOIN US TODAY. UPSC and IAS aspirants welcome."
+    d = c.post("/api/check", json={"content": text}).json()
+    t = [f for f in d["findings"] if f["rule_id"] == "TONE"]
+    names = {f["name"] for f in t}
+    assert {"Word the tone guideline avoids", "Shouting in capitals", "Too many exclamation marks", "Hype or pressure word"} <= names
+    for f in t:
+        assert f["severity"] == "suggestion" and f["engine"] == "Rule-based"
+        assert f["sources"][0].startswith("Brand guideline (Voice)")
+        assert text[f["start"]:f["end"]] == f["quote"]
+    assert not any(f["quote"] in ("UPSC", "IAS") for f in t)  # short acronyms are not shouting
+    assert d["summary"]["tone"]["status"] == "done" and "no AI" in d["summary"]["tone"]["message"]
+    calm = c.post("/api/check", json={"content": "Weekly mock tests and mentoring at Northstar Civils Academy."}).json()
+    assert not [f for f in calm["findings"] if f["rule_id"] == "TONE"]
+    assert any(p["check"] == "TONE" for p in calm["summary"]["passed"])
+    # no tone guideline in the kit: nothing is flagged and the status says why
+    issues, status = tone.check([("caption", "Caption", "HURRY NOW!!!")], [{"id": "G1", "section": "Name", "text": "Use the full name."}])
+    assert issues == [] and status["status"] == "skipped"
+
+
+def test_multi_brand_workspaces_keep_data_separate_and_follow_membership():
+    from _lbc import accounts
+    try:
+        c = _accounts_client()
+        os.environ["LBC_DEMO_ACCOUNTS"] = "1"
+        c.get("/api/health")
+        head, priya, arjun = _login("meera@xyz.com", "Meera@_1"), _login("priya@xyz.com", "Priya@_1"), _login("arjun@xyz.com", "Arjun@_1")
+        hc = TestClient(index.app, headers=H, cookies=head.cookies)
+        pc = TestClient(index.app, headers=H, cookies=priya.cookies)
+        ac = TestClient(index.app, headers=H, cookies=arjun.cookies)
+        b = hc.get("/api/brands").json()
+        assert [x["name"] for x in b["brands"]] == ["Northstar Civils Academy", "Sunrise Tutorials"] and b["can_add"]
+        assert {x["id"] for x in pc.get("/api/brands").json()["brands"]} == {"main", "sunrise"}  # demo Priya: both brands
+        # posts belong to the brand they were written in
+        d = pc.post("/api/drafts", json={"title": "Northstar post", "content": "Weekly mock tests at Northstar Civils Academy."}).json()
+        assert pc.post("/api/brand", json={"id": "sunrise"}).status_code == 200
+        pc.cookies.set("lbc_brand", "sunrise")
+        assert d["id"] not in {x["id"] for x in pc.get("/api/drafts").json()}
+        assert pc.get("/api/workspace").json()["meta"]["name"] == "Sunrise Tutorials"
+        assert pc.get("/api/session").json()["brand"]["name"] == "Sunrise Tutorials"
+        # a new brand starts with only the Indian ad regulations and no kit
+        r = hc.post("/api/brands", json={"name": "Acme Foods"})
+        assert r.status_code == 200 and r.json()["brand"]["empty"]
+        acme = r.json()["brand"]["id"]
+        hc.cookies.set("lbc_brand", acme)
+        w = hc.get("/api/workspace").json()
+        assert w["empty"] and w["facts"] == [] and all(x.get("source_type") == "regulatory" or x["name"] == "Sensitive topic" for x in w["rules"])
+        assert hc.post("/api/brands", json={"name": "acme foods"}).status_code == 409
+        # a reviewer who works only on Acme can't open the other brands, even with a forged cookie
+        hc.cookies.set("lbc_brand", "main")
+        inv = hc.post("/api/team/invites", json={"name": "Ravi", "email": "ravi@example.test", "role": "Reviewer", "brand_ids": [acme]}).json()
+        assert inv["invite"]["brand_names"] == ["Acme Foods"]
+        rv = TestClient(index.app, headers=H)
+        assert rv.post("/api/invite/accept", json={"token": inv["token"], "password": "Blue-harbour-7741"}).status_code == 200
+        assert [x["id"] for x in rv.get("/api/brands").json()["brands"]] == [acme]
+        assert rv.post("/api/brand", json={"id": "main"}).status_code == 403
+        rv.cookies.set("lbc_brand", "main")
+        assert rv.get("/api/workspace").json()["meta"]["name"] == "Acme Foods"
+        # the marketing head changes someone's brands on Team; heads always see every brand
+        ravi = next(u for u in hc.get("/api/team").json()["users"] if u["email"] == "ravi@example.test")
+        assert hc.put(f"/api/team/{ravi['id']}/brands", json={"ids": []}).status_code == 400
+        assert hc.put(f"/api/team/{ravi['id']}/brands", json={"ids": [acme, "sunrise"]}).json()["brand_ids"] == [acme, "sunrise"]
+        # My team (read-only): a reviewer sees the head and the creators they review on the open brand
+        ac.cookies.set("lbc_brand", "main")
+        t = ac.get("/api/my-team").json()
+        assert t["brand"] == "Northstar Civils Academy" and [h["name"] for h in t["heads"]] == ["Meera (marketing head)"]
+        assert [p["name"] for p in t["people"]] == ["Priya (social media)"]
+        # starting the demo over restores only the sample brand; other brands are kept
+        hc.cookies.set("lbc_brand", acme)
+        assert hc.post("/api/reset").json()["brand"] == "main"
+        assert {x["name"] for x in hc.get("/api/brands").json()["brands"]} >= {"Northstar Civils Academy", "Acme Foods"}
+    finally:
+        os.environ.pop("LBC_AUTH_MODE", None)
+        os.environ.pop("LBC_DEMO_ACCOUNTS", None)
+
+
+def test_marketing_head_can_remove_a_brand_completely():
+    from _lbc.store import ScopedStore, base_store
+    try:
+        c = _accounts_client()
+        os.environ["LBC_DEMO_ACCOUNTS"] = "1"
+        c.get("/api/health")
+        hc = TestClient(index.app, headers=H, cookies=_login("meera@xyz.com", "Meera@_1").cookies)
+        acme = hc.post("/api/brands", json={"name": "Acme Foods"}).json()["brand"]["id"]
+        inv = hc.post("/api/team/invites", json={"name": "Neha", "email": "neha@example.test", "role": "Creator", "brand_ids": [acme]}).json()
+        TestClient(index.app, headers=H).post("/api/invite/accept", json={"token": inv["token"], "password": "Blue-harbour-7741"})
+        pc = TestClient(index.app, headers=H, cookies=_login("priya@xyz.com", "Priya@_1").cookies)
+        assert pc.get("/api/session").status_code == 200
+        # only the marketing head, and only with the brand name typed
+        pc.cookies.set("lbc_brand", "main")
+        assert pc.post(f"/api/brands/{acme}/remove", json={"confirm": "Acme Foods"}).status_code == 403
+        assert hc.post(f"/api/brands/{acme}/remove", json={"confirm": "Acme"}).status_code == 400
+        r = hc.post(f"/api/brands/{acme}/remove", json={"confirm": "acme foods"})
+        assert r.status_code == 200 and r.json()["removed"] == "Acme Foods"
+        assert acme not in {b["id"] for b in hc.get("/api/brands").json()["brands"]}
+        assert ScopedStore(base_store(), acme).list("rule") == [] and ScopedStore(base_store(), acme).get("meta", "workspace") is None
+        neha = next(u for u in hc.get("/api/team").json()["users"] if u["email"] == "neha@example.test")
+        assert neha["brand_ids"] == []  # keeps the account, needs a new brand
+        # the other brands are untouched, and the last brand can't be removed
+        assert hc.post("/api/brands/sunrise/remove", json={"confirm": "Sunrise Tutorials"}).status_code == 200
+        assert hc.post("/api/brands/main/remove", json={"confirm": "Northstar Civils Academy"}).status_code == 409
+        # starting the demo over brings a removed sample brand back
+        assert hc.post("/api/reset").status_code == 200
+    finally:
+        os.environ.pop("LBC_AUTH_MODE", None)
+        os.environ.pop("LBC_DEMO_ACCOUNTS", None)

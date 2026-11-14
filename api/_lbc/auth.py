@@ -72,22 +72,35 @@ def _unb64(text):
     return base64.urlsafe_b64decode(text + "=" * (-len(text) % 4))
 
 
-def make_token(role, now=None):
-    now = int(now or time.time())
-    payload = _b64(json.dumps({"role": role, "name": ROLES[role], "iat": now, "exp": now + SESSION_TTL}).encode())
+def _sign(data):
+    payload = _b64(json.dumps(data).encode())
     sig = _b64(hmac.new(secret(), payload.encode(), hashlib.sha256).digest())
     return f"{payload}.{sig}"
+
+
+def _unsign(token):
+    payload, sig = token.split(".")
+    expected = _b64(hmac.new(secret(), payload.encode(), hashlib.sha256).digest())
+    if not hmac.compare_digest(sig, expected):
+        return None
+    return json.loads(_unb64(payload))
+
+
+def make_token(role, now=None, user=None):
+    """A demo session names a role. A personal-account session also carries the account id and its
+    session version, so changing the password, the role or deactivating the account ends old sessions."""
+    now = int(now or time.time())
+    data = {"role": role, "name": ROLES[role], "iat": now, "exp": now + SESSION_TTL}
+    if user:
+        data |= {"uid": user["id"], "name": user["name"], "ver": int(user.get("session_ver") or 0)}
+    return _sign(data)
 
 
 def read_token(token, now=None):
     """Return the session dict, or None if missing, tampered or expired."""
     try:
-        payload, sig = token.split(".")
-        expected = _b64(hmac.new(secret(), payload.encode(), hashlib.sha256).digest())
-        if not hmac.compare_digest(sig, expected):
-            return None
-        data = json.loads(_unb64(payload))
-        if data.get("role") not in ROLES or data.get("exp", 0) < (now or time.time()):
+        data = _unsign(token)
+        if not data or data.get("role") not in ROLES or data.get("exp", 0) < (now or time.time()):
             return None
         return data
     except Exception:

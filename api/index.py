@@ -7,6 +7,7 @@ Security model (see SECURITY.md):
 - Findings are computed on the server on every save; the browser cannot submit its own findings.
 """
 import base64
+import hmac
 import os
 import re
 import sys
@@ -19,12 +20,12 @@ from typing import Annotated, Literal, Optional
 sys.path.insert(0, os.path.dirname(__file__))
 
 from fastapi import FastAPI, HTTPException, Request  # noqa: E402
-from fastapi.responses import JSONResponse  # noqa: E402
+from fastapi.responses import JSONResponse, Response  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
-from _lbc import auth, brandfit, brandkit, engine, memory, platforms  # noqa: E402
+from _lbc import accounts, audit, auth, brands, pdf, brandfit, brandkit, engine, memory, platforms, tone  # noqa: E402
 from _lbc.brandapply import build_workspace  # noqa: E402
-from _lbc.store import get_store, storage_mode  # noqa: E402
+from _lbc.store import BRAND_TYPES, current_brand, get_store, seed_items, set_brand, storage_mode  # noqa: E402
 
 app = FastAPI(title="Live Brand Check API", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -32,8 +33,10 @@ SENIOR_ROLE = "Marketing head"
 ADMIN_ROLES = {SENIOR_ROLE}
 REVIEW_ROLES = {"Reviewer", SENIOR_ROLE}
 CREATOR_ROLES = {"Creator"}
-PUBLIC = {"/api/health", "/api/login"}
+PUBLIC = {"/api/health", "/api/login", "/api/login/account", "/api/setup", "/api/invite/lookup", "/api/invite/accept"}
 UNSAFE = {"POST", "PUT", "PATCH", "DELETE"}
+BRAND_COOKIE = "lbc_brand"  # which brand this browser is working in; checked against membership on every request
+NO_BRAND = "__none__"  # people not assigned to any brand see an empty workspace
 
 Short = Annotated[str, Field(max_length=150)]
 Text = Annotated[str, Field(max_length=5000)]
@@ -51,9 +54,16 @@ async def guard(request: Request, call_next):
     try:
         if path not in PUBLIC:
             session = auth.read_token(request.cookies.get(auth.COOKIE, ""))
+            if session and accounts.mode() == "accounts":
+                session = account_session(session)
             if not session:
                 return JSONResponse({"detail": "Sign in to continue."}, status_code=401)
             request.state.session = session
+            # Multi-brand: work in the brand this browser chose, if this person belongs to it (else their first brand).
+            brands.ensure()
+            user = get_store().get("user", session["uid"]) if session.get("uid") else None
+            request.state.brand = brands.pick(user, request.cookies.get(BRAND_COOKIE))
+            set_brand(request.state.brand or NO_BRAND)
         response = await call_next(request)
     except RuntimeError as exc:  # missing server configuration, never a stack trace
         return JSONResponse({"detail": f"Server is not configured: {exc}."}, status_code=500)
@@ -66,6 +76,16 @@ async def guard(request: Request, call_next):
 
 def me(request: Request):
     return request.state.session
+
+
+def account_session(session):
+    """In accounts mode a session must belong to an active account, with the same session version.
+    Name and role always come from the account, so a role change applies at once."""
+    uid = session.get("uid")
+    user = get_store().get("user", uid) if uid else None
+    if not user or not user.get("active", True) or int(user.get("session_ver") or 0) != session.get("ver"):
+        return None
+    return session | {"name": user["name"], "role": user["role"], "email": user["email"]}
 
 
 def need(request: Request, roles, action):
@@ -96,8 +116,17 @@ def workspace():
 
 
 def log(draft_id, actor, role, action, detail=""):
-    get_store().put("event", {"id": new_id(), "draft_id": draft_id, "actor": actor, "role": role,
-                              "action": action, "detail": detail[:600], "at": now()})
+    """Append to the hash-linked audit log (see _lbc/audit.py): each entry carries the fingerprint of the one before."""
+    s = get_store()
+    with _LOG_LOCK:
+        event, head = audit.link({"id": new_id(), "draft_id": draft_id, "actor": actor, "role": role,
+                                  "action": action, "detail": detail[:600], "at": now()}, s.get("meta", audit.HEAD_ID))
+        s.put("event", event)
+        s.put("meta", head)
+    return event
+
+
+_LOG_LOCK = __import__("threading").Lock()
 
 
 # ---------- sessions ----------
@@ -123,8 +152,31 @@ def set_session(request: Request, response: JSONResponse, role):
     return response
 
 
+class AccountLoginIn(BaseModel):
+    email: Annotated[str, Field(max_length=254)]
+    password: Annotated[str, Field(max_length=128)]
+
+
+def account_signed_in(request, user, note="Signed in"):
+    """Issue the session cookie for an account."""
+    accounts.record_success(user)
+    get_store().put("user", user)
+    log(None, user["name"], user["role"], note)
+    response = JSONResponse({"name": user["name"], "role": user["role"]})
+    secure = request.headers.get("x-forwarded-proto") == "https" or request.url.scheme == "https"
+    response.set_cookie(auth.COOKIE, auth.make_token(user["role"], user=user), max_age=auth.SESSION_TTL,
+                        httponly=True, secure=secure, samesite="lax", path="/")
+    return response
+
+
+def find_user(email):
+    return get_store().get("user", accounts.user_id(email))
+
+
 @app.post("/api/login")
 def login(body: LoginIn, request: Request):
+    if accounts.mode() == "accounts":
+        raise HTTPException(400, "Sign in with your email and password.")
     if auth.password_required():
         ip = client_ip(request)
         if not auth.allow_attempt(ip):
@@ -141,14 +193,52 @@ def login(body: LoginIn, request: Request):
     return set_session(request, JSONResponse({"role": body.role, "name": auth.ROLES[body.role]}), body.role)
 
 
+@app.post("/api/login/account")
+def login_account(body: AccountLoginIn, request: Request):
+    """Personal-account sign-in. 3 wrong passwords pause sign-in for 15 minutes; 2 more block the account
+    until a marketing head unblocks it. The count is kept on the account, so it holds on every server."""
+    if accounts.mode() != "accounts":
+        raise HTTPException(400, "Personal accounts are not switched on for this site.")
+    ip = client_ip(request)
+    if not auth.allow_attempt(ip):
+        raise HTTPException(429, "Too many wrong attempts from this device. Wait 10 minutes and try again.")
+    accounts.ensure_demo_accounts(get_store(), auth.hash_password)
+    brands.ensure()
+    brands.give_demo_accounts_all_brands()
+    user = find_user(body.email)
+    if user and (user.get("blocked") or accounts.is_locked(user)):
+        raise HTTPException(423 if user.get("blocked") else 429, accounts.lock_message(user))
+    if not user or not user.get("active", True) or not auth.verify_password(body.password, user.get("password_hash", "")):
+        auth.record_failure(ip)
+        message = "Wrong email or password."
+        if user and user.get("active", True):
+            message = accounts.record_fail(user)
+            get_store().put("user", user)
+            if user.get("blocked"):
+                log(None, user["name"], user["role"], "Account blocked", f"{accounts.BLOCK_AFTER} wrong passwords")
+        time.sleep(0.4)
+        status = 423 if user and user.get("blocked") else 429 if user and accounts.is_locked(user) else 401
+        raise HTTPException(status, message)
+    auth.clear_failures(ip)
+    return account_signed_in(request, user)
+
+
 @app.get("/api/session")
 def session(request: Request):
     s = me(request)
-    return {"role": s["role"], "name": s["name"], "expires": s["exp"]}
+    out = {"role": s["role"], "name": s["name"], "expires": s["exp"], "mode": accounts.mode()}
+    if s.get("uid"):
+        user = get_store().get("user", s["uid"]) or {}
+        out |= {"uid": s["uid"], "email": user.get("email")}
+    rec = brands.get(getattr(request.state, "brand", None))
+    out["brand"] = {"id": rec["id"], "name": brands.label(rec)} if rec else None
+    return out
 
 
 @app.post("/api/session/role")
 def switch_role(body: RoleIn, request: Request):
+    if accounts.mode() == "accounts" or me(request).get("uid"):
+        raise HTTPException(403, "Roles belong to accounts. Ask the marketing head to change your role.")
     log(None, auth.ROLES[body.role], body.role, "Switched role", f"from {me(request)['role']}")
     return set_session(request, JSONResponse({"role": body.role, "name": auth.ROLES[body.role]}), body.role)
 
@@ -450,6 +540,9 @@ def run_all(content, channel, images, post=None):
         if n >= 2:
             f["seen_before"] = n
             f["why"] = f"{f['why']} This has come up {n} times before in {meta.get('name', 'this brand')} posts."
+    tone_parts = tone_texts(content, images, post)
+    tone_issues, tone_status = tone.check(tone_parts, ws["guidelines"], meta.get("name") or "the brand")
+    findings += tone_findings(tone_issues, tone_status)
     fit = post_brand_fit(content, images, findings, meta, post, memory.learned_topics(mem, meta.get("keywords") or []))
     if fit and fit["verdict"] == "no":
         findings.insert(0, brandfit.finding(fit) | {"id": engine._id()})
@@ -460,14 +553,37 @@ def run_all(content, channel, images, post=None):
         applied.insert(0, ("BRAND-FIT", "post", f"Fits {fit['brand']}"))
     if memory.house_style(mem) and main.strip():
         applied.append(("MEM-STYLE", "caption", "Matches the brand's house style"))
+    if tone_status["status"] == "done":
+        applied += [("TONE", loc, "Tone matches the brand's tone guideline") for loc, _, _ in tone_parts]
     passed = passed_checks(applied, findings)
     if fit and fit["verdict"] == "weak":  # partly on brand: not counted as passed, and not a blocker either
         passed = [x for x in passed if x["check"] != "BRAND-FIT"]
     summary = {"blocker": counts["blocker"], "warning": counts["warning"], "suggestion": counts["suggestion"],
                "sensitive": any(f.get("sensitive") for f in findings),
                "checks_run": len(applied), "checks_passed": len(passed), "passed": passed,
-               "layers": dict(Counter(f["layer"] for f in findings)), "brand_fit": fit}
+               "layers": dict(Counter(f["layer"] for f in findings)), "brand_fit": fit, "tone": tone_status}
     return findings, verified, summary
+
+
+def tone_texts(content, images, post=None):
+    """The words a post says, part by part, for the tone check."""
+    if post:
+        parts = [(loc, platforms.field_label(post["platform"], fid), t)
+                 for loc, fid, t in platforms.text_parts(post["platform"], post["format"], post["context"], post["fields"])]
+    else:
+        parts = [("caption", "Caption", content)]
+    return parts + [(f"{i.kind} {n}", f"Text in {i.kind} {n}", i.text) for n, i in enumerate(images, 1)]
+
+
+def tone_findings(issues, status):
+    """Tone issues as findings: fixed rules (see _lbc/tone.py), always suggestions, always citing the tone guideline."""
+    return [engine._finding(
+        rule_id="TONE", name=i["name"], category="Tone", severity="suggestion",
+        start=i["start"], end=i["end"], text=i["quote"], why=i["why"],
+        sources=[f"Brand guideline ({i['guideline'].get('section') or 'Tone'}): “{i['guideline']['text'][:180]}”"],
+        suggestion=i["suggestion"], location=i["location"], guideline_ids=[i["guideline"]["id"]],
+        confidence="Medium") | {"layer": "brand"}
+        for i in issues]
 
 
 def other_brand_names(meta):
@@ -490,9 +606,15 @@ def post_brand_fit(content, images, findings, meta, post=None, learned=()):
 
 @app.get("/api/health")
 def health():
+    accounts.ensure_demo_accounts(get_store(), auth.hash_password)
+    brands.ensure()
+    brands.give_demo_accounts_all_brands()
     return {"ok": True, "storage": storage_mode(), "today": date.today().isoformat(),
             "login_configured": bool(os.environ.get("LBC_PASSWORD_HASH")) or not auth.password_required(),
-            "password_required": auth.password_required(), "brand": (get_store().get("meta", "workspace") or {}).get("name", "")}
+            "password_required": auth.password_required() and accounts.mode() == "password", "auth_mode": accounts.mode(),
+            "setup_needed": accounts.mode() == "accounts" and not get_store().list("user"),
+            "demo_accounts": accounts.demo_credentials(),
+            "brand": (get_store().get("meta", "workspace") or {}).get("name", "")}
 
 
 def need_input(content, images, post=None):
@@ -615,7 +737,8 @@ def update_fact(fact_id: str, body: FactIn, request: Request):
         fact["total"] = fact.get("full_course", 0) + fact.get("interview_guidance", 0)
     s.put("fact", fact)
     log(None, s_["name"], s_["role"], "Updated fact", f"{fact_id}: " + ", ".join(f"{k}={v}" for k, v in changes.items()))
-    return fact
+    reopened = reopen_stale_approvals((s_["name"], s_["role"]))
+    return fact | {"reopened_posts": reopened}
 
 
 @app.post("/api/facts")
@@ -729,13 +852,46 @@ def remember_raised(d, findings):
         raised[f["rule_id"]] = f["name"]
 
 
-def summary(d):
+def active_user(uid):
+    u = get_store().get("user", uid) if uid else None
+    return u if u and u.get("active", True) else None
+
+
+def assigned_reviewers(d):
+    """Active reviewers assigned to the post's creator ([] = nobody assigned, so any reviewer may review)."""
+    creator = get_store().get("user", d.get("author_id") or "") if d.get("author_id") else None
+    if not creator:
+        return []
+    return [u for u in (active_user(r) for r in creator.get("reviewer_ids") or [])
+            if u and u["role"] == "Reviewer" and in_brand(u)]
+
+
+def in_brand(user, brand=None):
+    """Whether a person works on a brand (the current one by default). Marketing heads work on every brand."""
+    ids = brands.member_ids(user)
+    return ids is None or (brand or current_brand()) in ids
+
+
+def can_review(s_, d, assigned=None):
+    if not s_ or s_["role"] == SENIOR_ROLE or not s_.get("uid"):
+        return True
+    assigned = assigned_reviewers(d) if assigned is None else assigned
+    return not assigned or s_["uid"] in {u["id"] for u in assigned}
+
+
+def review_info(s_, d):
+    assigned = assigned_reviewers(d)
+    return {"assigned_reviewers": [u["name"] for u in assigned], "can_review": can_review(s_, d, assigned)}
+
+
+def summary(d, s_=None):
     review = d.get("review") or {}
     return {k: d.get(k) for k in ("id", "title", "channel", "status", "author", "version", "updated_at",
-                                  "requires_senior", "platform", "format", "context", "campaign_id")} | {
+                                  "requires_senior", "platform", "format", "context", "campaign_id", "reopened")} | {
         "preview": d["content"][:140] or (d.get("fields") or {}).get("headline", "")[:140] or " ".join(i.get("text", "") for i in d.get("images", []))[:140],
         "review": {k: review.get(k) for k in ("action", "comment", "by", "at", "version")} if review else None,
-        "open_blockers": [b["name"] for b in open_blockers(d)]}
+        "open_blockers": [b["name"] for b in open_blockers(d)], "evidence": len(d.get("evidence") or []),
+        "archived": bool(d.get("archived"))} | (review_info(s_, d) if s_ and s_.get("uid") else {})
 
 
 def get_or_404(draft_id, editable=False):
@@ -768,20 +924,53 @@ def archive_posts(meta, s_, reason):
     return n
 
 
+def reopen_stale_approvals(actor=("Live Brand Check", "System")):
+    """An approval stands only while the facts it relied on are unchanged and still valid.
+    If one changed, was removed or expired, the post goes back to review with the reasons."""
+    store, ws = get_store(), workspace()
+    today, n = date.today().isoformat(), 0
+    for d in store.list("draft"):
+        if d.get("status") != "approved" or d.get("archived") or not d.get("evidence"):
+            continue
+        reasons = audit.stale_reasons(d["evidence"], ws["facts"], today)
+        if not reasons:
+            continue
+        try:
+            images = [ImageMeta(**{k: v for k, v in i.items() if k in ImageMeta.model_fields}) for i in d.get("images", [])]
+            findings, verified, summ = run_all(d.get("content", ""), d.get("channel", ""), images, stored_post(d))
+            d.update(findings=findings, verified=verified, summary=summ,
+                     requires_senior=any(f.get("sensitive") for f in findings))
+        except Exception:
+            pass  # keep the old findings; the reasons still send it back to review
+        d.setdefault("past_approvals", []).append(d.get("review") or {})
+        d.update(status="in_review", reopened={"at": now(), "reasons": reasons, "version": d.get("approved_version")},
+                 updated_at=now())
+        d.pop("approved_version", None)
+        store.put("draft", d)
+        log(d["id"], actor[0], actor[1], "Approval reopened", " ".join(reasons))
+        n += 1
+    return n
+
+
 @app.get("/api/drafts")
-def list_drafts(status: Optional[Annotated[str, Field(max_length=80)]] = None):
+def list_drafts(request: Request, status: Optional[Annotated[str, Field(max_length=80)]] = None):
+    reopen_stale_approvals()
     ds = live_drafts()
     if status:
         wanted = set(status.split(","))
         ds = [d for d in ds if d["status"] in wanted]
-    return [summary(d) for d in sorted(ds, key=lambda d: d["updated_at"], reverse=True)]
+    s_ = me(request)
+    return [summary(d, s_) for d in sorted(ds, key=lambda d: d["updated_at"], reverse=True)]
 
 
 @app.get("/api/drafts/{draft_id}")
-def get_draft(draft_id: str):
+def get_draft(draft_id: str, request: Request):
+    if (get_store().get("draft", draft_id) or {}).get("status") == "approved":
+        reopen_stale_approvals()
     d = get_or_404(draft_id)
     events = sorted([e for e in get_store().list("event") if e.get("draft_id") == draft_id], key=lambda e: e["at"])
-    return d | {"events": events, "open_blockers": [b["name"] for b in open_blockers(d)]}
+    s_ = me(request)
+    return d | {"events": events, "open_blockers": [b["name"] for b in open_blockers(d)]} | (review_info(s_, d) if s_.get("uid") else {})
 
 
 @app.post("/api/drafts")
@@ -795,7 +984,7 @@ def create_draft(body: DraftIn, request: Request):
     d = {"id": new_id(), "title": body.title.strip() or "Untitled draft", **rec,
          "content": body.content, "images": images,
          "findings": findings, "verified": verified, "summary": summ,
-         "status": "draft", "author": s_["name"], "version": 1,
+         "status": "draft", "author": s_["name"], "author_id": s_.get("uid"), "version": 1,
          "versions": [{"version": 1, "content": body.content, "images": images, "fields": rec.get("fields"),
                        "channel": rec["channel"], "by": s_["name"], "at": now()}],
          "decisions": [], "created_at": now(), "updated_at": now()}
@@ -887,7 +1076,7 @@ def adapt(draft_id: str, body: AdaptIn, request: Request):
         findings, verified, summ = run_all(body_in.content, rec["channel"], media, post)
         images = [m.model_dump() for m in media]
         d = {"id": new_id(), "title": body_in.title, **rec, "content": body_in.content, "images": images,
-             "findings": findings, "verified": verified, "summary": summ, "status": "draft", "author": s_["name"],
+             "findings": findings, "verified": verified, "summary": summ, "status": "draft", "author": s_["name"], "author_id": s_.get("uid"),
              "version": 1, "campaign_id": campaign, "adapted_from": src["id"],
              "versions": [{"version": 1, "content": body_in.content, "images": images, "fields": rec.get("fields"),
                            "channel": rec["channel"], "by": s_["name"], "at": now()}],
@@ -988,6 +1177,7 @@ def submit(draft_id: str, request: Request):
     d["status"] = "in_review"
     d["submitted_version"] = d["version"]
     d["submitted_by"] = s_["name"]
+    d["submitted_by_id"] = s_.get("uid")
     d["updated_at"] = now()
     s.put("draft", d)
     log(draft_id, s_["name"], s_["role"], "Sent for review",
@@ -1007,8 +1197,11 @@ def review(draft_id: str, body: ReviewIn, request: Request):
     d = get_or_404(draft_id, editable=True)
     if d["status"] != "in_review":
         raise HTTPException(409, "This post is not waiting for review.")
-    if s_["name"] in (d.get("author"), d.get("submitted_by")):
+    if s_["name"] in (d.get("author"), d.get("submitted_by")) or (s_.get("uid") and s_["uid"] in (d.get("author_id"), d.get("submitted_by_id"))):
         raise HTTPException(403, "You can't review a post you wrote or submitted.")
+    if not can_review(s_, d):
+        names = ", ".join(u["name"] for u in assigned_reviewers(d))
+        raise HTTPException(403, f"This post is reviewed by {d.get('author', 'the creator')}'s assigned reviewer ({names}) or the marketing head.")
     if body.action == "approve" and d.get("requires_senior") and s_["role"] != SENIOR_ROLE:
         raise HTTPException(403, "This post mentions a sensitive topic, so only the marketing head can approve it.")
     if body.action == "request_changes" and len(body.comment.strip()) < 5:
@@ -1018,6 +1211,8 @@ def review(draft_id: str, body: ReviewIn, request: Request):
                    "at": now(), "version": d["version"]}
     if body.action == "approve":
         d["approved_version"] = d["version"]
+        d["evidence"] = audit.evidence(d, workspace()["facts"])
+        d.pop("reopened", None)
     d["updated_at"] = now()
     s.put("draft", d)
     title = d.get("title") or "Untitled"
@@ -1029,6 +1224,93 @@ def review(draft_id: str, body: ReviewIn, request: Request):
     log(draft_id, s_["name"], s_["role"], "Approved" if body.action == "approve" else "Requested changes",
         f"Version {d['version']}" + (f": {body.comment.strip()}" if body.comment.strip() else ""))
     return d
+
+
+# ---------- trusted history ----------
+
+@app.get("/api/audit/verify")
+def verify_audit(request: Request):
+    """Recompute every fingerprint in the audit log and report the first broken link, if any."""
+    need(request, REVIEW_ROLES | CREATOR_ROLES, "check the audit log")
+    store = get_store()
+    return audit.verify(store.list("event"), store.get("meta", audit.HEAD_ID))
+
+
+ACTION_WORD = {"accept": "Accepted the fix", "edit": "Edited the fix", "reject": "Kept the original (override)"}
+
+
+@app.get("/api/drafts/{draft_id}/record.pdf")
+def approval_record(draft_id: Annotated[str, Field(max_length=20)], request: Request):
+    """A downloadable PDF of what was approved, by whom, on what evidence, with the post's audit trail
+    and the state of the tamper-evident log at the moment of export."""
+    s_ = me(request)
+    d = get_or_404(draft_id)
+    if s_["role"] not in REVIEW_ROLES and not (s_["name"] == d.get("author") or (s_.get("uid") and s_["uid"] == d.get("author_id"))):
+        raise HTTPException(403, "Only the post's creator, reviewers or the marketing head can export its approval record.")
+    if d.get("status") != "approved":
+        raise HTTPException(409, "There is no approval record yet: this post is not approved.")
+    store = get_store()
+    ver = d.get("approved_version") or d["version"]
+    v = next((x for x in d.get("versions", []) if x.get("version") == ver), d.get("versions", [{}])[-1])
+    review = d.get("review") or {}
+    summ = d.get("summary") or {}
+    events = sorted([e for e in store.list("event") if e.get("draft_id") == draft_id], key=lambda e: (e.get("seq") or 0, e["at"]))
+    chain = audit.verify(store.list("event"), store.get("meta", audit.HEAD_ID))
+    L = [("title", "Approval record"), ("small", f"Live Brand Check. Exported {now()} by {s_['name']} ({s_['role']})."), ("gap", "")]
+    L += [("h", "Post"), ("p", f"Title: {d.get('title') or 'Untitled'}"), ("p", f"Where: {d.get('channel') or '-'}"),
+          ("p", f"Brand kit: {d.get('kit_name') or workspace()['meta'].get('name') or '-'}"),
+          ("p", f"Created by: {d.get('author')}   Approved version: {ver} of {d['version']}"),
+          ("b", f"Approved by {review.get('by', '-')} ({review.get('role', '-')}) on {review.get('at', '-')}"),
+          ("p", f"Reviewer note: {review.get('comment')}") if review.get("comment") else ("gap", ""), ("gap", "")]
+    L += [("h", "What was approved")]
+    if v.get("content"):
+        L.append(("p", v["content"]))
+    for k, val in (v.get("fields") or {}).items():
+        if val:
+            L.append(("p", f"{platforms.field_label(d.get('platform'), k) if d.get('platform') else k}: {val}"))
+    for n, img in enumerate(v.get("images") or d.get("images") or [], 1):
+        if (img.get("text") or "").strip():
+            L.append(("p", f"Text read from {img.get('kind', 'image')} {n}: {img['text'][:800]}"))
+    L += [("gap", ""), ("h", "Evidence the approval relied on")]
+    if d.get("evidence"):
+        L.append(("small", "If any of these facts changes, is removed or expires, this approval reopens automatically."))
+        for ev in d["evidence"]:
+            L.append(("p", f"- {ev['label']} (valid until {ev.get('valid_until') or '-'}), fact fingerprint {ev['fingerprint']}"))
+    else:
+        L.append(("p", "No approved facts (fees, offers, results) were quoted in this post."))
+    L += [("gap", ""), ("h", "Checks"),
+          ("p", f"{summ.get('checks_passed', 0)} of {summ.get('checks_run', 0)} checks passed. "
+                f"{summ.get('blocker', 0)} blocker(s), {summ.get('warning', 0)} warning(s), {summ.get('suggestion', 0)} suggestion(s) on the latest check.")]
+    if (summ.get("tone") or {}).get("status"):
+        L.append(("small", f"Tone: {summ['tone'].get('message', '')}"))
+    if d.get("decisions"):
+        L.append(("b", "Decisions on findings"))
+        for x in d["decisions"]:
+            L.append(("p", f"- {ACTION_WORD.get(x['action'], x['action'])}: {x['name']}" + (f' on "{x["quote"]}"' if x.get("quote") else "")
+                      + (f". Reason: {x['reason']}" if x.get("reason") else "") + f" ({x['by']}, {x['at']})"))
+    for past in d.get("past_approvals") or []:
+        if past.get("by"):
+            L.append(("small", f"Earlier approval by {past['by']} on {past.get('at')} was reopened because its evidence changed."))
+    L += [("gap", ""), ("h", "Audit trail of this post")]
+    for e in events:
+        L.append(("p", f"#{e.get('seq', '-')}  {e['at']}  {e['actor']} ({e['role']}): {e['action']}" + (f". {e['detail']}" if e.get("detail") else "")))
+        if e.get("hash"):
+            L.append(("mono", f"fingerprint {e['hash']}  previous {e['prev']}"))
+    L += [("gap", ""), ("h", "Log integrity")]
+    if chain["ok"]:
+        L.append(("p", f"Verified: all {chain['entries']} linked log entries recompute correctly and link to each other."))
+    else:
+        b = chain["broken_at"]
+        L.append(("b", f"NOT verified: the log is broken at entry #{b.get('seq')}: {b['reason']}"))
+    if chain.get("legacy"):
+        L.append(("small", f"{chain['legacy']} older entries were written before fingerprints were added and are not covered."))
+    L.append(("mono", f"Log head fingerprint at export: {chain.get('head')}"))
+    record_id = audit._sha([d["id"], ver, review.get("at"), d.get("evidence"), chain.get("head")])[:24]
+    L.append(("mono", f"Record id: {record_id}"))
+    body = pdf.render(L, footer=f"Approval record {record_id} - {d.get('title') or 'Untitled'}")
+    log(draft_id, s_["name"], s_["role"], "Exported approval record", f"Record {record_id}")
+    return Response(body, media_type="application/pdf", headers={
+        "Content-Disposition": f'attachment; filename="approval-{pdf.safe_filename(d.get("title"))}.pdf"'})
 
 
 # ---------- insights ----------
@@ -1044,6 +1326,7 @@ IMAGE_SOURCES = {
     "IMG-REQUIRED": ("Brand kit", "Brand kit required text"),
     "BRAND-FIT": ("Brand kit", "Brand kit: name, logo, colours, topics and approved offers"),
     "MEM-STYLE": ("Brand memory", "Brand memory: approved posts of this brand"),
+    "TONE": ("Brand kit", "Brand guidelines: tone and voice"),
 }
 GROUP_ORDER = ["Regulation", "Brand kit", "Brand memory", "Approved facts", "Accessibility", "Reading quality", "No longer active"]
 
@@ -1229,7 +1512,7 @@ def get_kit(request: Request):
     meta = workspace()["meta"]
     draft = store.get("meta", "brandkit_draft")
     live_kit = (meta.get("kit") or kit_from_live(workspace())) if kit_is_live(meta) else None
-    return {"draft": draft, "live_kit": live_kit, "live": kit_is_live(meta), "ai_reader": brandkit.ai_enabled(),
+    return {"draft": draft, "live_kit": live_kit, "live": kit_is_live(meta),
             "can_edit": me(request)["role"] in ADMIN_ROLES}
 
 
@@ -1446,7 +1729,8 @@ def update_kit(body: KitUpdate, request: Request):
     log(None, s_["name"], s_["role"], f"Updated brand kit (revision {revision})",
         "; ".join(f"{c['area']}: {len(c['added'])} added, {len(c['removed'])} removed" for c in changes))
     rechecked = recheck_open_posts(s_)
-    return {"changes": changes, "applied": True, "revision": revision, "rechecked": rechecked, "meta": meta}
+    reopened = reopen_stale_approvals((s_["name"], s_["role"]))
+    return {"changes": changes, "applied": True, "revision": revision, "rechecked": rechecked, "reopened": reopened, "meta": meta}
 
 
 @app.get("/api/memory")
@@ -1503,9 +1787,502 @@ def reset_kit(body: KitReset, request: Request):
     return {"ok": True}
 
 
+# ---------- personal accounts ----------
+
+RoleName = Literal["Creator", "Reviewer", "Marketing head"]
+Email = Annotated[str, Field(max_length=254)]
+Password = Annotated[str, Field(max_length=128)]
+PersonName = Annotated[str, Field(min_length=2, max_length=60)]
+
+
+def need_accounts():
+    if accounts.mode() != "accounts":
+        raise HTTPException(400, "Personal accounts are not switched on for this site (set LBC_AUTH_MODE=accounts).")
+
+
+def check_password(password, email, name):
+    problem = accounts.password_problem(password, email, name)
+    if problem:
+        raise HTTPException(400, problem)
+
+
+def new_user(name, email, role, password, by):
+    return {"id": accounts.user_id(email), "name": name.strip(), "email": accounts.norm_email(email), "role": role,
+            "password_hash": auth.hash_password(password), "active": True, "session_ver": 0, "created_at": now(),
+            "created_by": by, "failed": 0, "locked_until": None, "last_login": None}
+
+
+class SetupIn(BaseModel):
+    name: PersonName
+    email: Email
+    password: Password
+    setup_code: Annotated[str, Field(max_length=200)] = ""
+
+
+@app.get("/api/setup")
+def setup_status():
+    need_accounts()
+    return {"needed": not get_store().list("user"), "code_required": bool(os.environ.get("LBC_SETUP_CODE"))}
+
+
+@app.post("/api/setup")
+def setup(body: SetupIn, request: Request):
+    """Create the first account, a marketing head. Only possible while no account exists. In production
+    it also needs LBC_SETUP_CODE, so a stranger can't claim a freshly deployed site first."""
+    need_accounts()
+    if get_store().list("user"):
+        raise HTTPException(409, "This site is already set up. Sign in instead.")
+    code = os.environ.get("LBC_SETUP_CODE", "")
+    if auth.is_production() and not code:
+        raise HTTPException(503, "Set LBC_SETUP_CODE in the server settings before creating the first account.")
+    if code and not hmac.compare_digest(body.setup_code.strip(), code):
+        time.sleep(0.4)
+        raise HTTPException(401, "Wrong setup code.")
+    if not accounts.valid_email(body.email):
+        raise HTTPException(400, "Enter a valid email address.")
+    check_password(body.password, body.email, body.name)
+    user = new_user(body.name, body.email, SENIOR_ROLE, body.password, "first-run setup")
+    get_store().put("user", user)
+    return account_signed_in(request, user, "Created the first account")
+
+
+Ids = Annotated[list[Annotated[str, Field(max_length=40)]], Field(max_length=100)]
+
+
+class InviteIn(BaseModel):
+    name: PersonName
+    email: Email
+    role: RoleName
+    assign: Ids = []  # a creator's reviewers, or a reviewer's creators
+    brand_ids: Ids = []  # the brands a creator or reviewer works on
+
+
+COUNTERPART = {"Creator": "Reviewer", "Reviewer": "Creator"}
+
+
+def active_of(role):
+    return [u for u in get_store().list("user") if u.get("active", True) and u["role"] == role]
+
+
+def check_assign(role, ids, required=True, brand_ids=None):
+    """The people a new or existing member is paired with: reviewers for a creator, creators for a reviewer.
+    With brand_ids, only people who work on at least one of those brands can be picked (and must be, if any exist)."""
+    other = COUNTERPART.get(role)
+    if not other:
+        if ids:
+            raise HTTPException(400, "Only creators and reviewers are paired with each other.")
+        return []
+    valid = {u["id"]: u for u in active_of(other)
+             if brand_ids is None or any(in_brand(u, b) for b in brand_ids)}
+    ids = list(dict.fromkeys(ids))
+    if any(i not in valid for i in ids):
+        raise HTTPException(400, f"Pick active {other.lower()}s only.")
+    if required and not ids and valid:
+        raise HTTPException(400, f"Choose at least one {other.lower()} for this {role.lower()}." if role == "Reviewer"
+                            else "Choose at least one reviewer for this creator.")
+    return ids
+
+
+def pairing(user, users=None):
+    """For the Team page: who a creator is reviewed by, or who a reviewer looks after."""
+    users = users if users is not None else get_store().list("user")
+    if user["role"] == "Creator":
+        return {"reviewer_ids": [r for r in user.get("reviewer_ids") or []]}
+    if user["role"] == "Reviewer":
+        return {"creator_ids": [u["id"] for u in users if u["role"] == "Creator" and user["id"] in (u.get("reviewer_ids") or [])]}
+    return {}
+
+
+def apply_pairing(user, ids):
+    """Set a creator's reviewers, or the creators a reviewer looks after (updating each creator)."""
+    if user["role"] == "Creator":
+        user["reviewer_ids"] = ids
+        get_store().put("user", user)
+    elif user["role"] == "Reviewer":
+        for c in active_of("Creator") + [u for u in get_store().list("user") if u["role"] == "Creator" and not u.get("active", True)]:
+            current = list(c.get("reviewer_ids") or [])
+            want = c["id"] in ids
+            if want and user["id"] not in current:
+                c["reviewer_ids"] = current + [user["id"]]
+                get_store().put("user", c)
+            elif not want and user["id"] in current:
+                c["reviewer_ids"] = [r for r in current if r != user["id"]]
+                get_store().put("user", c)
+
+
+def names_of(ids):
+    return [u["name"] for u in (get_store().get("user", i) for i in ids) if u]
+
+
+def invite_view(inv):
+    return {k: inv.get(k) for k in ("id", "name", "email", "role", "by", "created_at", "expires_at", "used_at", "revoked")} | \
+        {"usable": accounts.invite_usable(inv), "assign": inv.get("assign") or [], "assign_names": names_of(inv.get("assign") or []),
+         "brand_names": [brands.label(b) for b in (brands.get(i) for i in inv.get("brand_ids") or []) if b]}
+
+
+@app.get("/api/team")
+def team(request: Request):
+    need_accounts()
+    need(request, ADMIN_ROLES, "manage the team")
+    users = sorted(get_store().list("user"), key=lambda u: (not u.get("active", True), u["role"], u["name"].lower()))
+    invites = sorted(get_store().list("invite"), key=lambda i: i["created_at"], reverse=True)
+    return {"users": [accounts.public(u) | pairing(u, users) | {"brand_ids": brands.member_ids(u)} for u in users],
+            "invites": [invite_view(i) for i in invites if accounts.invite_usable(i)],
+            "invite_days": accounts.INVITE_DAYS,
+            "brands": [{"id": r["id"], "name": brands.label(r)} for r in brands.records()],
+            "current": getattr(request.state, "brand", None)}
+
+
+@app.post("/api/team/invites")
+def create_invite(body: InviteIn, request: Request):
+    """Create a one-time invitation link. The link is shown once; only a hash of it is stored."""
+    need_accounts()
+    s_ = need(request, ADMIN_ROLES, "invite people")
+    if not accounts.valid_email(body.email):
+        raise HTTPException(400, "Enter a valid email address.")
+    if find_user(body.email):
+        raise HTTPException(409, "Someone with this email already has an account.")
+    for old in get_store().list("invite"):  # one open invitation per email
+        if old["email"] == accounts.norm_email(body.email) and accounts.invite_usable(old):
+            get_store().put("invite", old | {"revoked": True})
+    brand_ids = check_brands(body.role, body.brand_ids)
+    assign = check_assign(body.role, body.assign, brand_ids=brand_ids)
+    inv, token = accounts.new_invite(body.name, body.email, body.role, s_["name"])
+    inv["assign"] = assign
+    inv["brand_ids"] = brand_ids
+    get_store().put("invite", inv)
+    paired = f", paired with {', '.join(names_of(assign))}" if assign else ""
+    log(None, s_["name"], s_["role"], "Invited a team member", f"{inv['name']} ({inv['email']}) as {inv['role']}{paired}")
+    return {"invite": invite_view(inv), "token": token}
+
+
+@app.post("/api/team/invites/{invite_id}/revoke")
+def revoke_invite(invite_id: Annotated[str, Field(max_length=20)], request: Request):
+    need_accounts()
+    s_ = need(request, ADMIN_ROLES, "cancel invitations")
+    inv = get_store().get("invite", invite_id)
+    if not inv:
+        raise HTTPException(404, "Invitation not found.")
+    get_store().put("invite", inv | {"revoked": True})
+    log(None, s_["name"], s_["role"], "Cancelled an invitation", inv["email"])
+    return {"ok": True}
+
+
+class TokenIn(BaseModel):
+    token: Annotated[str, Field(max_length=100)]
+
+
+def usable_invite(token):
+    h = accounts.token_hash(token)
+    inv = next((i for i in get_store().list("invite") if hmac.compare_digest(i["token_hash"], h)), None)
+    if not accounts.invite_usable(inv):
+        raise HTTPException(404, "This invitation link is not valid. It may have been used, cancelled or expired; ask for a new one.")
+    return inv
+
+
+@app.post("/api/invite/lookup")
+def invite_lookup(body: TokenIn):
+    need_accounts()
+    inv = usable_invite(body.token)
+    brand = (get_store().get("meta", "workspace") or {}).get("name", "")
+    return {"name": inv["name"], "email": inv["email"], "role": inv["role"], "by": inv["by"], "expires_at": inv["expires_at"], "brand": brand}
+
+
+class AcceptIn(TokenIn):
+    password: Password
+
+
+@app.post("/api/invite/accept")
+def invite_accept(body: AcceptIn, request: Request):
+    need_accounts()
+    if not auth.allow_attempt(client_ip(request)):
+        raise HTTPException(429, "Too many attempts. Wait 10 minutes and try again.")
+    inv = usable_invite(body.token)
+    if find_user(inv["email"]):
+        raise HTTPException(409, "This email already has an account. Sign in instead.")
+    check_password(body.password, inv["email"], inv["name"])
+    user = new_user(inv["name"], inv["email"], inv["role"], body.password, inv["by"])
+    if inv.get("brand_ids") is not None and user["role"] != SENIOR_ROLE:
+        user["brand_ids"] = [b for b in inv["brand_ids"] if brands.get(b)]
+    get_store().put("user", user)
+    other = COUNTERPART.get(user["role"])
+    still_valid = [i for i in inv.get("assign") or [] if (u := active_user(i)) and u["role"] == other]
+    apply_pairing(user, still_valid)
+    get_store().put("invite", inv | {"used_at": now()})
+    return account_signed_in(request, user, "Joined from an invitation")
+
+
+class MemberIn(BaseModel):
+    role: Optional[RoleName] = None
+    active: Optional[bool] = None
+
+
+def active_heads(exclude=None):
+    return [u for u in get_store().list("user") if u.get("active", True) and u["role"] == SENIOR_ROLE and u["id"] != exclude]
+
+
+@app.patch("/api/team/{uid}")
+def update_member(uid: Annotated[str, Field(max_length=40)], body: MemberIn, request: Request):
+    """Change someone's role, or deactivate / reactivate them. Their current sessions end straight away."""
+    need_accounts()
+    s_ = need(request, ADMIN_ROLES, "manage the team")
+    user = get_store().get("user", uid)
+    if not user:
+        raise HTTPException(404, "Account not found.")
+    if uid == s_.get("uid"):
+        raise HTTPException(400, "You can't change your own role or deactivate yourself. Ask another marketing head.")
+    if user.get("demo") and (body.role or body.active is not None):
+        raise HTTPException(400, "Demo accounts can't be changed, so every visitor can sign in with the details on the sign-in page.")
+    leaving_head = user["role"] == SENIOR_ROLE and ((body.role and body.role != SENIOR_ROLE) or body.active is False)
+    if leaving_head and not active_heads(exclude=uid):
+        raise HTTPException(400, "Keep at least one active marketing head.")
+    changes = []
+    if body.role and body.role != user["role"]:
+        changes.append(f"role {user['role']} \u2192 {body.role}")
+        if user["role"] in COUNTERPART:  # the old pairing no longer fits the new role
+            apply_pairing(user, [])
+            user = get_store().get("user", uid)
+            user.pop("reviewer_ids", None)
+        user["role"] = body.role
+    if body.active is not None and body.active != user.get("active", True):
+        user["active"] = body.active
+        changes.append("reactivated" if body.active else "deactivated")
+    if changes:
+        user["session_ver"] = int(user.get("session_ver") or 0) + 1  # sign them out everywhere
+        get_store().put("user", user)
+        log(None, s_["name"], s_["role"], "Changed a team member", f"{user['name']}: " + ", ".join(changes))
+    return accounts.public(user)
+
+
+class AssignIn(BaseModel):
+    ids: Ids
+
+
+@app.put("/api/team/{uid}/assignments")
+def set_assignments(uid: Annotated[str, Field(max_length=40)], body: AssignIn, request: Request):
+    """A creator's reviewers, or the creators a reviewer looks after."""
+    need_accounts()
+    s_ = need(request, ADMIN_ROLES, "pair creators and reviewers")
+    user = get_store().get("user", uid)
+    if not user or user["role"] not in COUNTERPART:
+        raise HTTPException(400, "Only creators and reviewers are paired with each other.")
+    ids = check_assign(user["role"], body.ids, required=False)
+    apply_pairing(user, ids)
+    who = ", ".join(names_of(ids)) or "nobody"
+    log(None, s_["name"], s_["role"], "Changed pairing", f"{user['name']} ({user['role']}): {who}")
+    fresh = get_store().get("user", uid)
+    return accounts.public(fresh) | pairing(fresh)
+
+
+class BrandsIn(BaseModel):
+    ids: Ids
+
+
+@app.put("/api/team/{uid}/brands")
+def set_member_brands(uid: Annotated[str, Field(max_length=40)], body: BrandsIn, request: Request):
+    """The brands a creator or reviewer works on. Marketing heads always see every brand."""
+    need_accounts()
+    s_ = need(request, ADMIN_ROLES, "assign brands")
+    user = get_store().get("user", uid)
+    if not user:
+        raise HTTPException(404, "No such team member.")
+    if user["role"] == SENIOR_ROLE:
+        raise HTTPException(400, "Marketing heads work on every brand.")
+    user["brand_ids"] = check_brands(user["role"], body.ids, default=False)
+    get_store().put("user", user)
+    log(None, s_["name"], s_["role"], "Changed brands", f"{user['name']}: " + ", ".join(brands.label(brands.get(b)) for b in user["brand_ids"]))
+    return accounts.public(user) | pairing(user) | {"brand_ids": user["brand_ids"]}
+
+
+@app.post("/api/team/{uid}/unblock")
+def unblock_member(uid: Annotated[str, Field(max_length=40)], request: Request):
+    """Let someone sign in again after too many wrong passwords."""
+    need_accounts()
+    s_ = need(request, ADMIN_ROLES, "unblock accounts")
+    user = get_store().get("user", uid)
+    if not user:
+        raise HTTPException(404, "Account not found.")
+    get_store().put("user", accounts.unblock(user))
+    log(None, s_["name"], s_["role"], "Unblocked an account", user["name"])
+    return accounts.public(user)
+
+
+def my_account(request):
+    s_ = me(request)
+    user = get_store().get("user", s_.get("uid") or "")
+    if not user:
+        raise HTTPException(400, "This is a demo session. Personal account settings need a personal account.")
+    return s_, user
+
+
+def reissue(request, user, payload):
+    """After a security change the session version goes up: other devices are signed out, this one stays in."""
+    response = JSONResponse(payload)
+    secure = request.headers.get("x-forwarded-proto") == "https" or request.url.scheme == "https"
+    response.set_cookie(auth.COOKIE, auth.make_token(user["role"], user=user), max_age=auth.SESSION_TTL,
+                        httponly=True, secure=secure, samesite="lax", path="/")
+    return response
+
+
+class PasswordChangeIn(BaseModel):
+    current: Password
+    new: Password
+
+
+@app.post("/api/account/password")
+def change_password(body: PasswordChangeIn, request: Request):
+    s_, user = my_account(request)
+    if user.get("demo"):
+        raise HTTPException(403, "The demo account's password can't be changed, so every visitor can still sign in.")
+    if not auth.verify_password(body.current, user.get("password_hash", "")):
+        time.sleep(0.4)
+        raise HTTPException(401, "Your current password is wrong.")
+    check_password(body.new, user["email"], user["name"])
+    user["password_hash"] = auth.hash_password(body.new)
+    user["session_ver"] = int(user.get("session_ver") or 0) + 1
+    get_store().put("user", user)
+    log(None, user["name"], user["role"], "Changed password", "Other devices were signed out")
+    return reissue(request, user, {"ok": True})
+
+
+@app.post("/api/account/logout-all")
+def logout_everywhere(request: Request):
+    s_, user = my_account(request)
+    user["session_ver"] = int(user.get("session_ver") or 0) + 1
+    get_store().put("user", user)
+    log(None, user["name"], user["role"], "Signed out other devices")
+    return reissue(request, user, {"ok": True})
+
+
 @app.post("/api/reset")
 def reset(request: Request):
+    """Start the demo over: restores the sample brand only. Other brands and everyone's accounts are kept."""
     s_ = need(request, ADMIN_ROLES, "reset the demo data")
-    get_store().reset()
+    target = brands.sample_brand()
+    if target:
+        set_brand(target)
+        get_store().replace_types(list(BRAND_TYPES), seed_items())  # this brand's data only
+    else:  # the sample brand was removed: add it back as a new brand
+        from _lbc import seed as seed_data
+        target = brands.create(seed_data.WORKSPACE["name"], s_["name"], seed_items(), sample=True)["id"]
+        set_brand(target)
+    brands.ensure()
+    brands.give_demo_accounts_all_brands()
+    brands.add_to_demo_accounts(target)
     log(None, s_["name"], s_["role"], "Reset demo data")
-    return {"ok": True}
+    response = JSONResponse({"ok": True, "brand": target})
+    response.set_cookie(BRAND_COOKIE, target, max_age=60 * 60 * 24 * 365, httponly=True, samesite="lax", path="/")
+    return response
+
+
+# ---------- brands ----------
+
+class BrandPick(BaseModel):
+    id: Annotated[str, Field(max_length=40)]
+
+
+class BrandNew(BaseModel):
+    name: Annotated[str, Field(min_length=2, max_length=80)]
+
+
+def me_user(request):
+    s_ = me(request)
+    return get_store().get("user", s_["uid"]) if s_.get("uid") else None
+
+
+@app.get("/api/brands")
+def list_brands(request: Request):
+    """The brands this person can work on, and which one is open."""
+    user = me_user(request)
+    cur = getattr(request.state, "brand", None)
+    return {"brands": [brands.summary(r, cur) for r in brands.allowed(user)], "current": cur,
+            "can_add": me(request)["role"] in ADMIN_ROLES}
+
+
+@app.post("/api/brand")
+def switch_brand(body: BrandPick, request: Request):
+    user = me_user(request)
+    if body.id not in {r["id"] for r in brands.allowed(user)}:
+        raise HTTPException(403, "You don't work on that brand.")
+    response = JSONResponse({"ok": True, "current": body.id})
+    response.set_cookie(BRAND_COOKIE, body.id, max_age=60 * 60 * 24 * 365, httponly=True, samesite="lax", path="/")
+    return response
+
+
+@app.post("/api/brands")
+def add_brand(body: BrandNew, request: Request):
+    """A new brand starts with the Indian ad regulations only; the marketing head then uploads its brand kit."""
+    s_ = need(request, ADMIN_ROLES, "add brands")
+    name = body.name.strip()
+    if any(brands.label(r).lower() == name.lower() for r in brands.records()):
+        raise HTTPException(409, f"There is already a brand called {name}.")
+    rec = brands.create(name, s_["name"])
+    response = JSONResponse({"ok": True, "brand": brands.summary(rec, rec["id"])})
+    response.set_cookie(BRAND_COOKIE, rec["id"], max_age=60 * 60 * 24 * 365, httponly=True, samesite="lax", path="/")
+    return response
+
+
+class BrandRemove(BaseModel):
+    confirm: Annotated[str, Field(max_length=120)]
+
+
+@app.post("/api/brands/{brand_id}/remove")
+def remove_brand(brand_id: Annotated[str, Field(max_length=40)], body: BrandRemove, request: Request):
+    """Delete a brand and everything in it, for good. The brand name must be typed to confirm.
+    People keep their accounts; anyone who only worked on this brand is left without a brand until reassigned."""
+    s_ = need(request, ADMIN_ROLES, "remove brands")
+    rec = brands.get(brand_id)
+    if not rec:
+        raise HTTPException(404, "No such brand.")
+    name = brands.label(rec)
+    if body.confirm.strip().lower() != name.strip().lower():
+        raise HTTPException(400, f"Type the brand name exactly (“{name}”) to confirm.")
+    try:
+        brands.remove(brand_id)
+    except ValueError:
+        raise HTTPException(409, "This is the only brand. Add another brand before removing this one.")
+    nxt = brands.records()[0]["id"]
+    set_brand(nxt)
+    log(None, s_["name"], s_["role"], "Removed brand", f"{name} and all its brand kit, posts, reviews and history were deleted")
+    response = JSONResponse({"ok": True, "removed": name, "current": nxt})
+    response.set_cookie(BRAND_COOKIE, nxt, max_age=60 * 60 * 24 * 365, httponly=True, samesite="lax", path="/")
+    return response
+
+
+def check_brands(role, ids, default=True):
+    """The brands a new or existing creator or reviewer works on (at least one; an invitation without a choice uses
+    the brand the marketing head is working in). Marketing heads see every brand."""
+    if role == SENIOR_ROLE:
+        return None
+    known = {r["id"] for r in brands.records()}
+    ids = list(dict.fromkeys(i for i in ids if i in known)) or ([current_brand()] if current_brand() in known and default else [])
+    if not ids:
+        raise HTTPException(400, "Choose at least one brand for this person.")
+    return ids
+
+
+@app.get("/api/my-team")
+def my_team(request: Request):
+    """Read-only: who a creator or reviewer works with on the open brand."""
+    need_accounts()
+    s_ = me(request)
+    users = [u for u in get_store().list("user") if u.get("active", True)]
+    mine = get_store().get("user", s_.get("uid") or "") or {}
+    heads = [u for u in users if u["role"] == SENIOR_ROLE]
+    here = [u for u in users if u["role"] != SENIOR_ROLE and in_brand(u)]
+    if s_["role"] == "Reviewer":
+        title = "Creators you review"
+        people = [u for u in here if u["role"] == "Creator" and mine.get("id") in (u.get("reviewer_ids") or [])]
+        note = "" if people else "Nobody is paired with you on this brand yet, so you can review any of its creators."
+        people = people or [u for u in here if u["role"] == "Creator"]
+    elif s_["role"] == "Creator":
+        title = "Your reviewers"
+        people = [u for u in here if u["role"] == "Reviewer" and u["id"] in (mine.get("reviewer_ids") or [])]
+        note = "" if people else "No reviewer is paired with you on this brand yet, so any of its reviewers can review your posts."
+        people = people or [u for u in here if u["role"] == "Reviewer"]
+    else:
+        title, people, note = "Creators and reviewers", here, ""
+    view = lambda u: {"id": u["id"], "name": u["name"], "email": u["email"], "role": u["role"]}  # noqa: E731
+    rec = brands.get(getattr(request.state, "brand", None))
+    return {"brand": brands.label(rec) if rec else None, "heads": [view(u) for u in heads],
+            "title": title, "people": [view(u) for u in people], "note": note}
