@@ -4,11 +4,13 @@ import { api } from "@/lib/api";
 import { ROLES } from "./RoleProvider";
 import Icon from "./Icon";
 import { resetTour } from "./Tour";
+import { becomePerson, NO_DEMO_ACCOUNT } from "@/lib/person";
 
 const KEY = "lbc-demo-steps";
 
 // The demo, in the order a judge would walk it. Each step signs in as the right person and opens the right screen,
 // with a ready-made example where one helps. Everything still works by hand afterwards.
+// Steps with `find` open the history of an approved post whose approval rests on an approved fact.
 const STEPS = [
   { id: "catch", role: "Creator", href: "/?example=claims", title: "See what gets caught",
     body: "A post full of risky claims is checked against the brand kit and Indian ad rules. Every problem is underlined and names its source." },
@@ -18,6 +20,10 @@ const STEPS = [
     body: "Arjun sees the post, the automated checks and Priya's decisions. Approve it or ask for changes; Brand memory learns from it." },
   { id: "senior", role: "Marketing head", href: "/review", title: "Sensitive posts go to the marketing head",
     body: "The Diwali greeting mentions a festival, so only Meera can approve it." },
+  { id: "history", role: "Reviewer", find: "evidence", title: "See the tamper-proof history",
+    body: "Open an approved post: every version side by side, the facts its approval rests on, a log where each entry is fingerprinted and linked to the one before, and a PDF approval record." },
+  { id: "reopen", role: "Marketing head", find: "evidence", query: "?demo=reopen", title: "Change a fact, and the approval reopens",
+    body: "That approval relied on an approved fact. Change the fact as Meera and watch the post go back to review, with the reason, in the tamper-proof log." },
   { id: "patterns", role: "Marketing head", href: "/insights", title: "Spot repeated mistakes",
     body: "See which rules fire most and which ones people keep overriding. Analytics has the full numbers." },
   { id: "kit", role: "Marketing head", href: "/workspace#import", title: "Import a brand kit from a PDF",
@@ -26,6 +32,19 @@ const STEPS = [
 
 const readDone = () => { try { return JSON.parse(localStorage.getItem(KEY) || "[]"); } catch { return []; } };
 const writeDone = (ids) => { try { localStorage.setItem(KEY, JSON.stringify(ids)); } catch { /* storage blocked */ } };
+
+// The guided demo uses the sample brand. With several brands, open it first.
+async function openSampleBrand() {
+  const d = await api("/brands").catch(() => null);
+  const sample = d?.brands.find((b) => b.sample);
+  if (sample && !sample.current) await api("/brand", { method: "POST", body: { id: sample.id } });
+}
+
+async function approvedPost(query = "") {
+  const posts = await api("/drafts?status=approved").catch(() => []);
+  const p = posts.find((x) => x.evidence > 0) || posts[0];
+  return `/drafts/${p ? p.id : "s1"}${query}`;
+}
 
 export default function DemoGuide({ person }) {
   const [done, setDone] = useState([]);
@@ -40,20 +59,21 @@ export default function DemoGuide({ person }) {
     const next = [...new Set([...done, step.id])];
     setDone(next); writeDone(next);
     try {
-      if (person?.role !== step.role) await api("/session/role", { method: "POST", body: { role: step.role } });
-      window.location.href = step.href;
+      if (!(await becomePerson(step.role, person))) { setError(NO_DEMO_ACCOUNT); setGoing(null); return; }
+      await openSampleBrand();
+      window.location.href = step.find ? await approvedPost(step.query) : step.href;
     } catch (e) { setError(e.message); setGoing(null); }
   }
 
-  // Put the demo back to its starting state. Only the marketing head may reset, so switch to Meera for it,
-  // then return to whoever was signed in.
+  // Put the demo back to its starting state. Only the marketing head may reset, so act as Meera for it,
+  // then return to whoever was signed in. (Personal accounts are kept by the reset.)
   async function startOver() {
     setGoing("reset"); setError("");
     try {
       const back = person?.role;
-      if (back !== "Marketing head") await api("/session/role", { method: "POST", body: { role: "Marketing head" } });
+      if (!(await becomePerson("Marketing head", person))) { setError(NO_DEMO_ACCOUNT); setGoing(null); return; }
       await api("/reset", { method: "POST" });
-      if (back && back !== "Marketing head") await api("/session/role", { method: "POST", body: { role: back } });
+      if (back && back !== "Marketing head") await becomePerson(back, { ...person, role: "Marketing head" });
       writeDone([]);
       resetTour(); // the tips start again too
       window.location.href = "/overview";
@@ -100,7 +120,7 @@ export default function DemoGuide({ person }) {
             })}
           </ol>
           <div className="flex flex-wrap items-center gap-3 border-t border-line bg-canvas/60 px-5 py-3 text-xs text-muted">
-            <span className="min-w-0 flex-1">You can switch person any time from the account menu in the top right. Everything here is fictional demo data.</span>
+            <span className="min-w-0 flex-1">{person?.uid ? "Each step signs in with the right demo account for you." : "You can switch person any time from the account menu in the top right."} Everything here is fictional demo data.</span>
             {!confirmReset
               ? <button className="btn btn-ghost btn-sm" disabled={!!going} onClick={() => setConfirmReset(true)}><Icon name="refresh" className="h-3.5 w-3.5" />Start the demo over</button>
               : (

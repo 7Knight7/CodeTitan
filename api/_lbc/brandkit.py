@@ -1,19 +1,14 @@
 """Read any brand guideline PDF into a draft brand kit for a human to confirm.
 
-Two readers, merged:
-- Pattern reader (always on, no AI): HEX colours, fonts, rupee amounts with dates,
-  "don't / avoid / never" lists, "must include" lines, sensitive topics.
-- AI reader (only when ANTHROPIC_API_KEY is set): structures the rest. Every item it
-  returns must carry a quote copied from the PDF; items whose quote isn't found are dropped.
+A pattern reader, no AI and no external service: HEX colours, fonts, rupee amounts with dates,
+"don't / avoid / never" lists, "must include" lines, tone and positioning lines, sensitive topics,
+the brand name and the brand's topics. Every item keeps the page and the words it came from.
 
 Nothing here changes the live workspace. The marketing head reviews the draft and activates it.
 """
 import io
-import json
-import os
 import re
 
-import httpx
 from pypdf import PdfReader
 
 MAX_PDF_BYTES = 4 * 1024 * 1024
@@ -51,14 +46,6 @@ def read_pdf(data: bytes):
 
 def _clean(s):
     return re.sub(r"\s+", " ", s).strip(" -•*\u2022\t")
-
-
-def _page_of(pages, quote):
-    q = _clean(quote).lower()[:60]
-    for i, p in enumerate(pages, 1):
-        if q and q in _clean(p).lower():
-            return i
-    return None
 
 
 def _join_wrapped(page):
@@ -131,6 +118,7 @@ def pattern_read(pages):
 TITLE_WORDS = re.compile(r"(?i)\b(brand\s+)?(guidelines?|guide|book|toolkit|tool\s*kit|kit|manual|identity|style\s+guide|"
                          r"handbook|standards)\b")
 TONE_RE = re.compile(r"(?i)^(?:overall\s+|brand\s+)?(?:tone(?:\s+of\s+voice)?|voice|personality)(?:\s+rules?)?\s*:\s*(.{8,})")
+VOICE_SENTENCE_RE = re.compile(r"(?i)\bour (?:brand )?(?:voice|tone) is\s+([^.]{4,150}\.?)")
 POSITION_RE = re.compile(r"(?i)\b(we (?:connect|help|enable|believe|exist|empower|make|bring|stand)|"
                          r"our (?:mission|promise|purpose|vision|positioning)|brand (?:promise|positioning)|positioned as)\b")
 SENSITIVE_HEAD = re.compile(r"(?i)^sensitive topics?\s*[—–:-]+\s*([^:]{3,60}):\s*(.+)")
@@ -151,7 +139,7 @@ def read_brand_name(page):
 
 def read_voice(kit, line, src):
     """Tone of voice, positioning statements and named sensitive topics. No AI; each item keeps its line."""
-    m = TONE_RE.match(line)
+    m = TONE_RE.match(line) or VOICE_SENTENCE_RE.search(line)
     if m:
         first = re.split(r"(?<=\.)\s", m.group(1).strip())[0]
         if not any(t["text"] == first for t in kit["tone_rules"]):
@@ -216,110 +204,9 @@ def empty_kit():
             "guidelines": [], "keywords": []}
 
 
-AI_PROMPT = """Extract a brand kit from this brand guideline document. Return ONLY JSON, no prose:
-{{"brand_name": {{"text": str, "quote": str}},
- "wrong_names": [{{"text": str, "quote": str}}],          // misspellings or old names the brand says not to use
- "colours": [{{"name": str, "hex": "#RRGGBB", "quote": str}}],
- "fonts": [{{"name": str, "quote": str}}],
- "logo_required": {{"value": true|false, "quote": str}} or null,
- "required_text": [{{"text": str, "quote": str}}],        // text that must appear on posts/images
- "banned_phrases": [{{"text": str, "quote": str}}],       // exact words or claims not to use
- "tone_rules": [{{"text": str, "quote": str}}],
- "sensitive_topics": [{{"text": str, "quote": str}}],
- "facts": [{{"kind": "fee"|"offer"|"result"|"other", "label": str, "amount": int|null, "percent": int|null,
-            "full_course": int|null, "interview_guidance": int|null,
-            "valid_from": "YYYY-MM-DD"|"", "valid_until": "YYYY-MM-DD"|"", "quote": str}}],
- "guidelines": [{{"section": str, "text": str, "quote": str}}],
- "keywords": [{{"text": str, "quote": str}}]}}             // 5-20 products, services, topics and hashtags the brand talks about (1-3 words each)
-Rules: "quote" must be copied word for word from the document (max 200 characters). Do not invent anything.
-Use empty lists when the document says nothing. Use the document's own words for rules.
-
-Document:
-<<<{text}>>>"""
-
-
-def ai_enabled():
-    return bool(os.environ.get("ANTHROPIC_API_KEY"))
-
-
-def ai_read(pages, timeout=60.0):
-    text = "\n\n".join(f"[Page {i}]\n{p}" for i, p in enumerate(pages, 1))[:60000]
-    r = httpx.post(
-        "https://api.anthropic.com/v1/messages",
-        headers={"x-api-key": os.environ["ANTHROPIC_API_KEY"], "anthropic-version": "2023-06-01",
-                 "content-type": "application/json"},
-        json={"model": os.environ.get("LLM_MODEL", "claude-haiku-5-5"), "max_tokens": 4000,
-              "messages": [{"role": "user", "content": AI_PROMPT.format(text=text)}]},
-        timeout=timeout,
-    )
-    r.raise_for_status()
-    raw = "".join(b.get("text", "") for b in r.json().get("content", []))
-    return json.loads(raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip())
-
-
-def validate_ai(data, pages):
-    """Keep only AI items whose quote really appears in the PDF; tag them with page and reader."""
-    joined = _clean(" ".join(pages)).lower()
-    kit, dropped = empty_kit(), 0
-
-    def ok(item):
-        q = _clean(str(item.get("quote", ""))).lower()
-        return bool(q) and q[:120] in joined
-
-    def tag(item):
-        return item | {"page": _page_of(pages, item.get("quote", "")), "reader": "AI"}
-
-    for key in ("brand_name", "logo_required"):
-        v = data.get(key)
-        if isinstance(v, dict):
-            if ok(v):
-                kit[key] = tag(v)
-            else:
-                dropped += 1
-    for key in ("wrong_names", "colours", "fonts", "required_text", "banned_phrases", "tone_rules",
-                "sensitive_topics", "facts", "guidelines", "keywords"):
-        for item in data.get(key) or []:
-            if not isinstance(item, dict):
-                continue
-            if key == "colours" and not HEX_RE.fullmatch(str(item.get("hex", ""))):
-                dropped += 1
-                continue
-            if ok(item):
-                kit[key].append(tag(item))
-            else:
-                dropped += 1
-    return kit, dropped
-
-
-def merge(primary, extra):
-    """Combine two kits without duplicates (AI first, pattern items added if new)."""
-    out = {k: (list(v) if isinstance(v, list) else v) for k, v in primary.items()}
-    keys = {"colours": "hex", "fonts": "name", "facts": "quote", "required_text": "text", "banned_phrases": "text",
-            "sensitive_topics": "text", "wrong_names": "text", "tone_rules": "text", "guidelines": "text",
-            "keywords": "text"}
-    for k, field in keys.items():
-        seen = {str(x.get(field, "")).lower() for x in out[k]}
-        for x in extra.get(k, []):
-            if str(x.get(field, "")).lower() not in seen:
-                out[k].append(x)
-                seen.add(str(x.get(field, "")).lower())
-    for k in ("brand_name", "logo_required"):
-        out[k] = out[k] or extra.get(k)
-    return out
-
-
 def parse_brand_pdf(data: bytes):
+    """Read the PDF with the pattern reader. No AI and no external service: nothing leaves the server."""
     pages = read_pdf(data)
     kit = pattern_read(pages)
-    status = {"pages": len(pages), "ai": "off", "dropped": 0,
-              "message": "Read with the pattern reader. Set an AI key to extract tone rules and guidelines from prose."}
-    if ai_enabled():
-        try:
-            ai_kit, dropped = validate_ai(ai_read(pages), pages)
-            kit = merge(ai_kit, kit)
-            status = {"pages": len(pages), "ai": "on", "dropped": dropped,
-                      "message": f"Read with AI and the pattern reader. {dropped} AI item(s) without a matching quote were removed."}
-        except Exception as exc:
-            status["ai"] = "error"
-            status["message"] = f"AI reading failed ({type(exc).__name__}); showing pattern-reader results only."
-    return kit, status
+    return kit, {"pages": len(pages),
+                 "message": "Read on our server with the pattern reader (no AI). Check every item and add anything it missed."}

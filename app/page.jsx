@@ -533,6 +533,12 @@ function WritePage() {
                   <span className="font-semibold text-approved">{summary.checks_passed} of {summary.checks_run}</span> checks passed
                 </p>
               )}
+              {summary.tone && (
+                <p className="flex items-start gap-1.5 border-t border-line px-4 py-2.5 text-xs text-muted" data-testid="tone-status">
+                  <Icon name="message" className="mt-px h-3.5 w-3.5 shrink-0" />
+                  <span>Tone: {summary.tone.message}</span>
+                </p>
+              )}
               {summary.sensitive && <div className="border-t border-line px-4 py-3"><Notice tone="sensitive">Sensitive topic: only the marketing head can approve this post.</Notice></div>}
               {draft && !locked && canAct && (
                 <div className="border-t border-line bg-canvas/60 p-4" data-tour="send">

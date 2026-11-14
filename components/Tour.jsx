@@ -1,19 +1,23 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { api } from "@/lib/api";
+import { becomePerson, NO_DEMO_ACCOUNT } from "@/lib/person";
 import { useRole } from "./RoleProvider";
 import Icon from "./Icon";
 
 /* First-run walkthrough. The first time someone opens a screen (or reaches a new state, such as their first check
    results), a small tip card points at the part of the screen that matters and ends with what to do next.
    Tips never block the page: the highlighted control stays clickable. The "?" button in the top bar replays them.
-   Targets are elements marked with data-tour="<name>". Progress lives in this browser only. */
+   Targets are elements marked with data-tour="<name>". Progress lives in this browser, separately for each personal
+   account, so everyone who signs in for the first time gets the welcome and the tips. */
 
 const KEY = "lbc-tour";
-const read = () => { try { return { off: false, seen: [], ...JSON.parse(localStorage.getItem(KEY) || "{}") }; } catch { return { off: false, seen: [] }; } };
-const write = (s) => { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* storage blocked */ } };
-export const resetTour = () => { try { localStorage.removeItem(KEY); } catch { /* storage blocked */ } };
+const keyFor = (person) => (person?.uid ? `${KEY}:${person.uid}` : KEY);
+const read = (key) => { try { return { off: false, seen: [], ...JSON.parse(localStorage.getItem(key) || "{}") }; } catch { return { off: false, seen: [] }; } };
+const write = (key, s) => { try { localStorage.setItem(key, JSON.stringify(s)); } catch { /* storage blocked */ } };
+export const resetTour = () => {
+  try { Object.keys(localStorage).filter((k) => k === KEY || k.startsWith(`${KEY}:`)).forEach((k) => localStorage.removeItem(k)); } catch { /* storage blocked */ }
+};
 
 const NAV = ["nav", "menu-button"]; // sidebar on large screens, menu button on small ones
 
@@ -22,8 +26,9 @@ export const TOURS = {
     { welcome: true, title: "Welcome to Live Brand Check",
       body: "It checks marketing posts against a brand kit and Indian advertising rules before they go out. A sample brand is already loaded, so you can try everything straight away. These tips show you around." },
     { target: "guide", title: "Start here", body: "The guided demo walks you through the product. Each step opens the right screen as the right person." },
+    { target: "brand-switcher", title: "Your brands", body: "An agency works on several brands. Switch brands here: each one has its own brand kit, approved facts, posts, reviews and team. Marketing heads see every brand and can add one." },
     { target: NAV, title: "Every screen is here", body: "Content checker to write and check posts, Review & approvals, Brand guidelines, Insights and Analytics." },
-    { target: "account", title: "Switch person any time", body: "Priya writes posts, Arjun reviews them, and Meera (marketing head) approves sensitive posts and manages the brand kit." },
+    { target: "account", title: "Who is who", body: "Priya writes posts, Arjun reviews them, and Meera (marketing head) approves sensitive posts and manages the brand kit. Each guided-demo step opens as the right person for you." },
     { target: "help", title: "Tips are always here", body: "Press this to see the tips for any screen again." },
     { target: "guide-step-1", title: "Your next step", body: "Press Open on step 1 to see what the checker catches." },
   ],
@@ -52,14 +57,27 @@ export const TOURS = {
     { target: "decision", title: "Your next step: decide", body: "Approve the post, or ask for changes with a comment for the creator. Sensitive posts can only be approved by the marketing head." },
     { target: NAV, title: "Then: spot patterns", body: "Insights and Analytics show which mistakes keep coming back. Meera (marketing head) can open them." },
   ],
+  "review-reopened": [
+    { target: "reopened", title: "Back for review: its evidence changed", body: "This post was approved before, but a fact it relied on changed or expired. Check it against the current facts, then approve it again or ask for changes." },
+  ],
   "review-creator": [
     { target: "queue", title: "Where your posts are", body: "Posts you sent for review, and the ones sent back to you, are listed here with their status." },
     { target: "account", title: "Your next step", body: "Reviewers approve posts. Switch to Arjun to see the review side.", action: { label: "Switch to Arjun", role: "Reviewer", href: "/review" } },
   ],
   workspace: [
     { target: "identity", title: "The brand kit in use", body: "Every check uses this brand's colours, approved facts, rules and guidelines. The sample brand is already loaded." },
-    { target: "facts", title: "Approved facts", body: "Fees, offers and results in posts are compared with these, including the dates they are valid." },
+    { target: "facts", title: "Approved facts", body: "Fees, offers and results in posts are compared with these, including the dates they are valid. If a fact an approved post relied on changes or expires, that approval reopens." },
     { target: "import", title: "Your next step: import a brand kit", body: "To see how a new brand is set up, read the sample PDF in one click. The demo brand can be restored afterwards." },
+  ],
+  "workspace-live": [
+    { target: "identity", title: "The brand kit in use", body: "Every check uses this brand's colours, approved facts, rules and guidelines, from the PDF you activated." },
+    { target: "facts", title: "Approved facts", body: "Fees, offers and results in posts are compared with these, including the dates they are valid. If a fact an approved post relied on changes or expires, that approval reopens." },
+    { target: "update-kit", title: "Your next step: keep the kit current", body: "When the brand changes a fee, an offer or its guidelines, press Update brand kit. You preview every change before it applies, open posts are checked again, and approvals that relied on a changed fact reopen." },
+  ],
+  "workspace-viewer": [
+    { target: "identity", title: "The brand kit in use", body: "Every check uses this brand's colours, approved facts, rules and guidelines. Only the marketing head can change it." },
+    { target: "facts", title: "Approved facts", body: "Fees, offers and results in posts are compared with these, including the dates they are valid. Quote them exactly and your post passes the fact checks." },
+    { target: NAV, title: "Your next step", body: "Go back to your posts: the checks use everything on this page." },
   ],
   insights: [
     { target: "scope", title: "Which posts count", body: "Numbers cover posts checked against the current brand kit. Choose All history to include earlier brands." },
@@ -71,7 +89,20 @@ export const TOURS = {
   ],
   history: [
     { target: "versions", title: "Every version is kept", body: "Pick a version to see exactly what it said and which issues it had." },
+    { target: "compare", title: "Compare two versions", body: "See side by side which words were removed and added between any two versions." },
+    { target: "evidence", title: "What the approval rests on", body: "The approved facts this post quoted when it was approved. If one of them changes or expires, the approval reopens on its own." },
     { target: "audit", title: "Full audit trail", body: "Every save, fix and decision, with who did it and when. Nothing here can be edited." },
+    { target: "log-check", title: "Tamper-proof log", body: "Each entry carries a fingerprint of the one before it, like a chain. The server recomputes every fingerprint: if anyone changed or deleted a past entry, this turns red and names the broken entry." },
+    { target: "record-pdf", title: "Download the approval record", body: "A PDF with the approved post, who approved it and when, the facts it relied on, the decisions and the fingerprinted history." },
+  ],
+  "history-demo": [
+    { target: "evidence", title: "This approval rests on a fact", body: "The post was approved because it quotes this approved fact correctly. The fact's fingerprint was saved with the approval." },
+    { target: "log-check", title: "The history can't be quietly changed", body: "Every entry is fingerprinted and linked to the one before it. The server recomputes the chain each time you open this page." },
+    { target: "demo-reopen", title: "Your next step: change the fact", body: "Press the button to change the fact, as the marketing head would when an offer or fee changes. Watch what happens to the approval." },
+  ],
+  "history-reopened": [
+    { target: "reopened", title: "The approval reopened", body: "A fact this approval relied on changed, so the post went back to review with the reason. A reviewer must check it again before it can go out. The log shows who changed what, and when." },
+    { target: "log-check", title: "Still tamper-proof", body: "The reopening is in the audit trail too, fingerprinted and linked like every other entry." },
   ],
 };
 
@@ -83,6 +114,9 @@ function findTarget(target) {
   }
   return null;
 }
+
+// Only the steps whose part of the screen is showing right now, so the counter ("2 of 3") is always true.
+const present = (id) => (TOURS[id] || []).filter((s) => s.welcome || !s.target || findTarget(s.target));
 
 const Ctx = createContext(null);
 export const useTourControls = () => useContext(Ctx);
@@ -99,15 +133,22 @@ export function useTour(id, ok = true) {
 
 export function TourProvider({ children }) {
   const path = usePathname();
-  const [prefs, setPrefs] = useState(null); // null until read from this browser
-  const [active, setActive] = useState(null); // { id, i }
+  const { person } = useRole();
+  const key = person ? keyFor(person) : null; // whose progress: this account, or the shared demo session
+  const keyRef = useRef(key); keyRef.current = key;
+  const [prefs, setPrefs] = useState(null); // null until read for the signed-in person
+  const [active, setActive] = useState(null); // { id, i, steps }
   const [readyIds, setReadyIds] = useState([]);
   const prefsRef = useRef(prefs); prefsRef.current = prefs;
 
-  useEffect(() => { setPrefs(read()); }, []);
+  useEffect(() => { setPrefs(key ? read(key) : null); setActive(null); }, [key]);
   useEffect(() => { setActive(null); }, [path]);
 
-  const update = useCallback((fn) => setPrefs((p) => { const n = fn(p || read()); write(n); return n; }), []);
+  const update = useCallback((fn) => setPrefs((p) => {
+    const k = keyRef.current;
+    if (!k) return p;
+    const n = fn(p || read(k)); write(k, n); return n;
+  }), []);
   const finish = useCallback((id) => { update((p) => ({ ...p, seen: [...new Set([...p.seen, id])] })); setActive(null); }, [update]);
   const turnOff = useCallback(() => { update((p) => ({ ...p, off: true })); setActive(null); }, [update]);
 
@@ -125,18 +166,25 @@ export function TourProvider({ children }) {
     if (active && !readyIds.includes(active.id)) finish(active.id);
   }, [active, readyIds, finish]);
 
-  // Start the first ready tour that hasn't been seen.
+  // Start the first ready tour that hasn't been seen, once its screen has had a moment to render.
   useEffect(() => {
-    if (!prefs || prefs.off || active) return;
+    if (!prefs || prefs.off || active) return undefined;
     const id = readyIds.find((x) => TOURS[x] && !prefs.seen.includes(x));
-    if (id) setActive({ id, i: 0 });
-  }, [prefs, active, readyIds]);
+    if (!id) return undefined;
+    const t = setTimeout(() => {
+      const steps = present(id);
+      if (steps.length) setActive({ id, i: 0, steps });
+      else finish(id); // nothing to point at on this screen
+    }, 400);
+    return () => clearTimeout(t);
+  }, [prefs, active, readyIds, finish]);
 
   // Stable (reads the ready list from a ref) so pages registering tips never re-trigger each other.
   const replay = useCallback(() => {
     const id = readyRef.current.find((x) => TOURS[x]);
     update((p) => ({ off: false, seen: p.seen.filter((x) => x !== id) }));
-    if (id) setActive({ id, i: 0 });
+    const steps = id ? present(id) : [];
+    if (steps.length) setActive({ id, i: 0, steps });
   }, [update]);
 
   const activeRef = useRef(active); activeRef.current = active;
@@ -147,7 +195,7 @@ export function TourProvider({ children }) {
   return (
     <Ctx.Provider value={ctx}>
       {children}
-      {active && <TipCard key={`${active.id}-${active.i}`} tourId={active.id} index={active.i} onGo={go} onDone={done} onOff={turnOff} />}
+      {active && <TipCard key={`${active.id}-${active.i}`} steps={active.steps} index={active.i} onGo={go} onDone={done} onOff={turnOff} />}
     </Ctx.Provider>
   );
 }
@@ -164,9 +212,8 @@ export function TourHelp() {
   );
 }
 
-function TipCard({ tourId, index, onGo, onDone, onOff }) {
+function TipCard({ steps, index, onGo, onDone, onOff }) {
   const { person } = useRole();
-  const steps = TOURS[tourId];
   const step = steps[index];
   const [el, setEl] = useState(null);
   const [rect, setRect] = useState(null);
@@ -245,13 +292,14 @@ function TipCard({ tourId, index, onGo, onDone, onOff }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onDone]);
 
+  const [actError, setActError] = useState("");
   async function act(a) {
-    setGoing(true);
+    setGoing(true); setActError("");
     try {
-      if (person?.role !== a.role) await api("/session/role", { method: "POST", body: { role: a.role } });
+      if (!(await becomePerson(a.role, person))) { setActError(NO_DEMO_ACCOUNT); setGoing(false); return; }
       onDone();
       window.location.href = a.href;
-    } catch { setGoing(false); }
+    } catch (e) { setActError(e.message); setGoing(false); }
   }
 
   const waiting = !step.welcome && step.target && !rect;
@@ -296,6 +344,7 @@ function TipCard({ tourId, index, onGo, onDone, onOff }) {
             <div className="min-w-0 flex-1">
               <h2 id="tour-title" className="text-sm font-semibold">{step.title}</h2>
               <p className="mt-1 text-sm leading-6 text-muted">{step.body}</p>
+              {actError && <p role="alert" className="mt-2 rounded bg-blocker-soft px-2 py-1 text-xs text-blocker">{actError}</p>}
             </div>
             <button onClick={onDone} aria-label="Close tips for this screen" className="-mr-1 -mt-1 rounded p-1 text-muted hover:bg-canvas hover:text-ink"><Icon name="close" className="h-4 w-4" /></button>
           </div>

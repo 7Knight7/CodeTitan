@@ -13,6 +13,7 @@ Supabase table:
   create index lbc_items_type on lbc_items(type);
   alter table lbc_items enable row level security;  -- only the server's service key can read/write
 """
+import contextvars
 import copy
 import json
 import os
@@ -22,9 +23,29 @@ from pathlib import Path
 
 import httpx
 
-from . import seed
+from . import audit, seed
 
-TYPES = ("guideline", "rule", "fact", "draft", "event", "override", "meta", "memory")
+TYPES = ("guideline", "rule", "fact", "draft", "event", "override", "meta", "memory", "user", "invite", "brand")
+ACCOUNT_TYPES = ("user", "invite")  # personal accounts survive a demo reset
+GLOBAL_TYPES = ("user", "invite", "brand")  # shared by every brand; everything else belongs to one brand
+BRAND_TYPES = tuple(t for t in TYPES if t not in GLOBAL_TYPES)
+
+# Multi-brand: every brand's kit, facts, rules, posts, memory and audit log live in their own namespace.
+# The first brand ("main") uses the plain type names, so data from before multi-brand stays where it was.
+MAIN = "main"
+_brand = contextvars.ContextVar("lbc_brand", default=MAIN)
+
+
+def set_brand(brand_id):
+    return _brand.set(brand_id or MAIN)
+
+
+def current_brand():
+    return _brand.get()
+
+
+def scoped_type(type_, brand):
+    return type_ if type_ in GLOBAL_TYPES or brand == MAIN else f"{brand}__{type_}"
 
 
 def seed_items():
@@ -45,7 +66,7 @@ def sample_history():
     from .engine import run_checks
     ws = {"rules": [r | {"enabled": True} for r in seed.RULES], "facts": seed.FACTS}
     base = datetime.now(timezone.utc) - timedelta(days=6)
-    out = []
+    out, sample_events = [], []
     for i, h in enumerate(seed.SAMPLE_HISTORY):
         t0 = base + timedelta(days=i, hours=2)
         stamp = lambda m: (t0 + timedelta(minutes=m)).isoformat(timespec="seconds")
@@ -78,13 +99,15 @@ def sample_history():
             draft["review"] = {"action": action, "comment": comment, "by": by, "role": role, "at": stamp(30), "version": 1}
             if action == "approve":
                 draft["approved_version"] = 1
+                draft["evidence"] = audit.evidence(draft, seed.FACTS)
             events.append(("Approved" if action == "approve" else "Requested changes", by, role,
                            "Version 1" + (f": {comment}" if comment else ""), 30))
         out.append(("draft", draft))
         for k, (action, actor, role, detail, m) in enumerate(events):
-            out.append(("event", {"id": f"{did}e{k}", "draft_id": did, "actor": actor, "role": role,
-                                  "action": action, "detail": detail, "at": stamp(m)}))
-    return out
+            sample_events.append({"id": f"{did}e{k}", "draft_id": did, "actor": actor, "role": role,
+                                  "action": action, "detail": detail, "at": stamp(m)})
+    chained, head = audit.chain_all(sample_events)
+    return out + [("event", e) for e in chained] + [("meta", head)]
 
 
 class LocalStore:
@@ -108,13 +131,14 @@ class LocalStore:
 
     def reset(self):
         with self.lock:
-            db = {t: {} for t in TYPES}
+            kept = {t: self._load()[t] for t in ACCOUNT_TYPES} if self.path.exists() else {}
+            db = {t: {} for t in TYPES} | kept
             for t, d in seed_items():
                 db[t][d["id"]] = d
             self._save(db)
 
     def list(self, type_):
-        return list(self._load()[type_].values())
+        return list(self._load().get(type_, {}).values())
 
     def replace_types(self, types, items):
         with self.lock:
@@ -122,16 +146,16 @@ class LocalStore:
             for t in types:
                 db[t] = {}
             for t, d in items:
-                db[t][d["id"]] = d
+                db.setdefault(t, {})[d["id"]] = d
             self._save(db)
 
     def get(self, type_, id_):
-        return self._load()[type_].get(id_)
+        return self._load().get(type_, {}).get(id_)
 
     def put(self, type_, data):
         with self.lock:
             db = self._load()
-            db[type_][data["id"]] = data
+            db.setdefault(type_, {})[data["id"]] = data
             self._save(db)
         return data
 
@@ -141,14 +165,14 @@ class SupabaseStore:
         self.base = url.rstrip("/") + "/rest/v1/lbc_items"
         self.h = {"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"}
         self.client = httpx.Client(timeout=10.0)
-        if not self.list("meta"):
+        if not self.list("meta") and not self.list("brand"):  # an empty database (not one whose first brand was removed)
             self.reset()
 
     def _key(self, type_, id_):
         return f"{type_}:{id_}"
 
     def reset(self):
-        self.client.delete(self.base, params={"id": "neq.__none__"}, headers=self.h).raise_for_status()
+        self.client.delete(self.base, params={"type": f"not.in.({','.join(ACCOUNT_TYPES)})"}, headers=self.h).raise_for_status()
         rows = [{"id": self._key(t, d["id"]), "type": t, "data": d} for t, d in seed_items()]
         self.client.post(self.base, json=rows, headers=self.h).raise_for_status()
 
@@ -176,10 +200,50 @@ class SupabaseStore:
         return data
 
 
+class ScopedStore:
+    """The store as one brand sees it. Brand types are mapped into that brand's namespace."""
+
+    def __init__(self, base, brand):
+        self.base, self.brand = base, brand
+
+    def _t(self, type_):
+        return scoped_type(type_, self.brand)
+
+    def list(self, type_):
+        return self.base.list(self._t(type_))
+
+    def get(self, type_, id_):
+        return self.base.get(self._t(type_), id_)
+
+    def put(self, type_, data):
+        return self.base.put(self._t(type_), data)
+
+    def replace_types(self, types, items):
+        self.base.replace_types([self._t(t) for t in types], [(self._t(t), d) for t, d in items])
+
+    def reset(self):
+        """The main brand resets everything (as before multi-brand); another brand restores only its own data
+        to the sample brand."""
+        if self.brand == MAIN:
+            self.base.reset()
+        else:
+            self.replace_types(list(BRAND_TYPES), seed_items())
+
+
 _store = None
 
 
+def base_store():
+    return _base()
+
+
 def get_store():
+    """The store for the brand of the current request (see set_brand)."""
+    base_store_ = _base()
+    return ScopedStore(base_store_, current_brand())
+
+
+def _base():
     global _store
     if _store is None:
         url = os.environ.get("SUPABASE_URL")
@@ -192,4 +256,4 @@ def get_store():
 
 
 def storage_mode():
-    return "supabase" if isinstance(get_store(), SupabaseStore) else "local"
+    return "supabase" if isinstance(_base(), SupabaseStore) else "local"

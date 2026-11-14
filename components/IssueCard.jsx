@@ -17,7 +17,18 @@ export function SeverityTag({ severity }) {
   );
 }
 
+// For issues about the whole post (no words to replace): take the creator to the text to change it themselves.
+// Nothing is recorded; the issue goes away when the post is checked again, or they keep the original with a reason.
+function editPost(loc) {
+  const id = loc.startsWith("field:") ? `f-${loc.slice(6)}` : "f-main_text";
+  const el = document.getElementById(id) || document.querySelector("#f-main_text, form textarea, textarea");
+  if (!el) return;
+  el.scrollIntoView({ block: "center" });
+  el.focus({ preventScroll: true });
+}
+
 // One finding: what, why, source, fix, and the creator's decision.
+// The creator's choices are only: accept the suggested fix, edit, or keep the original with a reason.
 export default function IssueCard({ finding: f, n, active, onSelect, onDecide, decision, disabled }) {
   const [mode, setMode] = useState(null); // "edit" | "reject"
   const [text, setText] = useState(f.suggestion || f.quote || "");
@@ -90,7 +101,7 @@ export default function IssueCard({ finding: f, n, active, onSelect, onDecide, d
                 {canAutoFix && <button className="btn btn-teal btn-sm" onClick={() => onDecide("accept", { newText: f.suggestion })}><Icon name="check" className="h-3.5 w-3.5" />Accept fix</button>}
                 {isMedia && <button className="btn btn-primary btn-sm" onClick={() => onDecide("accept", {})}>I will fix the {mediaKind}</button>}
                 {canEdit && <button className="btn btn-quiet btn-sm" onClick={() => setMode("edit")}>Edit</button>}
-                {!isMedia && !canAutoFix && !canEdit && <button className="btn btn-quiet btn-sm" onClick={() => onDecide("accept", {})}>I&rsquo;ll fix it</button>}
+                {!isMedia && !canAutoFix && !canEdit && <button className="btn btn-quiet btn-sm" onClick={() => editPost(loc)}>Edit post</button>}
                 <button className="btn btn-ghost btn-sm" onClick={() => setMode("reject")}>Keep original</button>
               </div>
             )}

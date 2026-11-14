@@ -7,6 +7,7 @@ import Icon, { Logo } from "./Icon";
 import Notifications from "./CreatorNotes";
 import { TourHelp } from "./Tour";
 import ThemeToggle from "./Theme";
+import BrandSwitcher from "./BrandSwitcher";
 
 export { Logo };
 
@@ -19,12 +20,14 @@ export const LINKS = [
   { href: "/workspace#facts", match: "/workspace", label: "Approved facts", icon: "facts", group: 1, anchor: true },
   { href: "/insights", label: "Insights", icon: "insights", group: 2 },
   { href: "/analytics", label: "Analytics", icon: "analytics", group: 2 },
+  { href: "/team", label: "Team", icon: "user", group: 3, accounts: true },
 ];
 
 const isActive = (l, path) => !l.anchor && (l.href === "/" ? path === "/" : path.startsWith(l.href));
 
 export function pageTitle(path) {
   if (path.startsWith("/drafts/")) return ["Review & approvals", "Post history"];
+  if (path.startsWith("/account")) return ["Account & security"];
   const l = LINKS.find((x) => isActive(x, path));
   return [l?.label || "Live Brand Check"];
 }
@@ -59,6 +62,18 @@ function AccountMenu({ person, setRole, signOut, trigger, placement = "down" }) 
               <p className="truncate text-xs text-muted">{person?.role}</p>
             </div>
           </div>
+          {person?.uid ? (
+            <div className="p-2">
+              <Link href="/account" role="menuitem" onClick={() => setOpen(false)} className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-sm hover:bg-canvas">
+                <Icon name="lock" className="h-4 w-4 text-muted" /> Account &amp; security
+              </Link>
+              {person.role === "Marketing head" && (
+                <Link href="/team" role="menuitem" onClick={() => setOpen(false)} className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-sm hover:bg-canvas">
+                  <Icon name="user" className="h-4 w-4 text-muted" /> Team and invitations
+                </Link>
+              )}
+            </div>
+          ) : (<>
           <p className="px-4 pb-1 pt-3 text-xs font-medium text-muted">Act as</p>
           <div className="px-2 pb-2">
             {Object.entries(ROLES).map(([role, name]) => {
@@ -74,6 +89,7 @@ function AccountMenu({ person, setRole, signOut, trigger, placement = "down" }) 
               );
             })}
           </div>
+          </>)}
           <div className="border-t border-line p-2">
             <button role="menuitem" onClick={signOut} className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-sm text-muted hover:bg-canvas hover:text-ink">
               <Icon name="logout" className="h-4 w-4" /> Sign out
@@ -86,7 +102,9 @@ function AccountMenu({ person, setRole, signOut, trigger, placement = "down" }) 
 }
 
 function SidebarBody({ path, person, workspace, collapsed, onToggle, onNavigate, setRole, signOut }) {
-  const links = LINKS.filter((l) => person && canSee(person.role, l.match || l.href));
+  // Team: the marketing head manages it; creators and reviewers see a read-only "My team" (personal accounts only).
+  const links = LINKS.filter((l) => person && canSee(person.role, l.match || l.href) && (!l.accounts || person.uid))
+    .map((l) => (l.href === "/team" && person.role !== "Marketing head" ? { ...l, label: "My team" } : l));
   return (
     <div className="flex h-full flex-col">
       <div className={`flex items-center gap-3 pb-4 pt-5 ${collapsed ? "justify-center px-2" : "px-5"}`}>
@@ -96,16 +114,7 @@ function SidebarBody({ path, person, workspace, collapsed, onToggle, onNavigate,
         </Link>
       </div>
 
-      {!collapsed && (
-        <div className="mx-3 mb-4 rounded-md border border-line bg-surface/60 px-3.5 py-3">
-          <p className="text-2xs text-muted">Workspace</p>
-          <p className="mt-0.5 truncate text-sm font-medium">{workspace?.name || "…"}</p>
-          <p className="mt-1 flex items-center gap-1.5 text-2xs text-muted">
-            <span className={`dot ${workspace?.empty ? "bg-warning-vivid" : "bg-approved-vivid"}`} aria-hidden />
-            {workspace ? (workspace.empty ? "No brand kit live" : workspace.live ? "Brand kit live" : "Sample brand kit ready") : "Loading"}
-          </p>
-        </div>
-      )}
+      {!collapsed && <BrandSwitcher workspace={workspace} person={person} />}
 
       <nav className={`flex-1 overflow-y-auto ${collapsed ? "px-2" : "px-3"}`} aria-label="Main" data-tour="nav">
         {!person && [0, 1, 2, 3].map((i) => <span key={i} className="mx-2 my-3 block h-3 rounded bg-canvas" aria-hidden />)}
@@ -220,7 +229,7 @@ function TopBar({ path, person, setRole, signOut, workspace, onMenu, menuOpen })
                   className="ml-1 flex items-center gap-2 rounded-full p-0.5 transition-colors hover:bg-surface/70 sm:pr-3">
                   <Avatar name={person.name} />
                   <span className="hidden text-left leading-tight sm:block">
-                    <span className="block max-w-[10rem] truncate text-xs font-medium">{person.name.split(" (")[0]}</span>
+                    <span className="block max-w-[10rem] truncate text-xs font-medium">{(person.name || "").split(" (")[0]}</span>
                     <span className="block text-2xs text-muted">{person.role}</span>
                   </span>
                 </button>

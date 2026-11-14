@@ -47,9 +47,10 @@ Every finding carries `layer`, `confidence` (High, Medium or Low from OCR confid
 
 ### Brand kit (`api/_lbc/brandkit.py`, `brandapply.py`)
 
-- **Reading the PDF**: a pattern reader (always on, no AI) reads HEX colours, fonts, the logo rule, "must include" text, banned words (quoted words and "words we don't use" lists), tone and positioning lines, named sensitive topics, rupee fees and percent offers with dates, the brand name (without words like "Brand Toolkit"), and the brand's topics (its hashtags and often-repeated words). When `ANTHROPIC_API_KEY` is set an AI reader adds items, and any AI item whose quote is not found in the PDF is dropped. Every item keeps its page and quote.
+- **Reading the PDF**: a pattern reader (always on, no AI) reads HEX colours, fonts, the logo rule, "must include" text, banned words (quoted words and "words we don't use" lists), tone and positioning lines, named sensitive topics, rupee fees and percent offers with dates, the brand name (without words like "Brand Toolkit"), and the brand's topics (its hashtags and often-repeated words). No AI is used. Every item keeps its page and quote.
 - **Human confirmation**: the marketing head edits the draft kit on Brand workspace and activates it. Only then does it become live guidelines, rules and facts. Indian regulatory rules are always added.
-- **Lifecycle (one brand at a time)**: activation is refused while a kit is live. `/api/brandkit/update` shows a change preview, then applies it, keeping rule and fact ids for unchanged items and re-checking posts not yet approved. `/api/brandkit/reset` (brand name typed to confirm) removes the kit; its posts are archived with `kit_id` and `kit_name`, never deleted, and shown read-only under All history by brand.
+- **Multi-brand**: every brand's data lives in its own namespace (store type `<brand>__<type>`; the first brand, `main`, keeps the plain type names). Accounts, invitations and the brand list (`brand`) are shared. The middleware picks the request's brand from the `lbc_brand` cookie only if the person works on it (marketing heads and sign-ins without personal accounts: every brand; creators and reviewers: their `brand_ids`), else their first brand. Pairing and the reviewer check only count people who work on the open brand.
+- **Lifecycle (per brand)**: activation is refused while a kit is live. `/api/brandkit/update` shows a change preview, then applies it, keeping rule and fact ids for unchanged items and re-checking posts not yet approved. `/api/brandkit/reset` (brand name typed to confirm) removes the kit; its posts are archived with `kit_id` and `kit_name`, never deleted, and shown read-only under All history by brand.
 
 ### Brand fit (`api/_lbc/brandfit.py`)
 
@@ -75,6 +76,9 @@ One table, `lbc_items(id, type, data jsonb, created_at)`, with `type` one of: `g
 ## 4. Security design
 
 ### Authentication
+Three sign-in modes, chosen with server settings: **demo** (default), **shared password** (`LBC_REQUIRE_PASSWORD=1`) and **personal accounts** (`LBC_AUTH_MODE=accounts`).
+
+- **Personal accounts** (`api/_lbc/accounts.py`, all free, no outside service): one account per email, with its own password (scrypt hash) and a role set by the marketing head. The first account is created at `/setup`, which needs `LBC_SETUP_CODE` in production and only works while no account exists. Everyone else joins through a one-time invitation link (only a SHA-256 hash of the token is stored; links expire after 7 days) that the marketing head copies and sends. 3 wrong passwords pause that account's sign-in for 15 minutes; 2 more block it until a marketing head unblocks it on Team (or from the server: `python api/_lbc/accounts.py unblock <email>`). The count is stored on the account, so it holds across server instances. Each session carries the account id and a session version: changing a role, deactivating someone, changing a password or “sign out other devices” ends old sessions at once. Authors and reviewers are matched by account id, so nobody can approve their own post. Accounts are kept when demo data is reset. Three demo accounts for the judges (meera@xyz.com, priya@xyz.com, arjun@xyz.com, passwords shown on the sign-in page) are created automatically in accounts mode; they get the 15-minute pause but are never blocked, and their password, role and access can't be changed. Turn them off for real use with `LBC_DEMO_ACCOUNTS=0`. Creators and reviewers are paired (several each way): inviting a creator means choosing their reviewer(s), inviting a reviewer means choosing the creator(s) they look after (optional only while nobody exists to choose), and pairings can be edited on Team. Only a creator's paired, active reviewers or the marketing head can approve or send back that creator's posts; posts whose creator has no active paired reviewer can be reviewed by any reviewer. Demo Priya is paired with demo Arjun.
 - **Judges' demo**: no password; the sign-in page only asks for a role, and the server still issues the signed session below. Turn the password on before any real use with `LBC_REQUIRE_PASSWORD=1`.
 - **Shared password** (when on), stored only as a salted **scrypt** hash in the `LBC_PASSWORD_HASH` environment variable. The password is never in the code, the repository or the database.
 - Constant-time comparison, a 0.4-second delay on failure, and **5 attempts per 10 minutes per IP** before a 429 response.
@@ -86,6 +90,7 @@ One table, `lbc_items(id, type, data jsonb, created_at)`, with `type` one of: `g
 | Action | Creator | Reviewer | Marketing head |
 | --- | --- | --- | --- |
 | Read posts, workspace, history, brand memory | Yes | Yes | Yes |
+| Invite people, change roles, deactivate or unblock accounts (accounts mode) | No | No | Yes |
 | Insights and Analytics | No | Yes | Yes |
 | Create, edit, decide on findings, send for review | Yes | No | No |
 | Approve or request changes | No | Yes, not on own posts | Yes, not on own posts |
@@ -110,9 +115,11 @@ Posts are locked while in review and after approval. Nobody can review a post th
 | Error details leaking internals | Generic JSON errors; API docs pages are switched off |
 | Post images leaking | OCR and image measurements run in the browser; only the read text, numbers and a 480 px preview for the reviewer are sent |
 | Open redirect after login | The `next` parameter must be a same-site path |
-| Data sent to AI services | Posts never. Only the text of an uploaded brand guideline PDF, and only when `ANTHROPIC_API_KEY` is set; AI items without a matching quote from the PDF are dropped |
+| Data sent to AI services | None. Posts, images and brand guideline PDFs are all checked or read on our own server and in the browser, with fixed rules |
 | Learning changing the rules | Brand memory is stored apart from the brand kit, learns only from human decisions, and can only add topics and suggestions, never blockers |
-| Audit tampering by users | Users can't edit or delete events through the API. A hash-linked tamper-evident log is a Round 3 improvement |
+| Audit tampering | Users can't edit or delete events through the API. Every event stores its place (seq), the previous entry's SHA-256 fingerprint and its own, so any later change, removal or reordering is detected by `GET /api/audit/verify` and shown on History and in the PDF approval record. It detects tampering; someone with database access could rewrite the whole chain, which the head fingerprint printed in exported records exposes |
+| Stale approvals | Approvals store the facts they relied on with fingerprints; an edited, removed or expired fact sends the post back to review with the reason |
+| Browser extension | Read-only on Instagram and Facebook: never edits the page or posts. Uses the user's own signed-in session (no keys stored); images are read on the device; it can only reach the Live Brand Check address and the Instagram/Facebook image CDNs |
 
 Also set on every page: `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy` (camera, microphone, location off), `Cross-Origin-Opener-Policy`, HSTS. API responses are `Cache-Control: no-store`.
 
@@ -123,12 +130,12 @@ Also set on every page: `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `P
 - **Login rate limit per server instance.** Serverless instances don't share memory, so the limit is per instance. A Postgres-backed counter would make it global.
 - **`'unsafe-inline'` scripts in CSP.** Next.js needs inline scripts without a nonce setup. Nonce-based CSP is a later hardening step.
 - **Single JSON table.** Fast to build and fine for demo volumes; it doesn't enforce relations or allow per-row access policies.
-- **Rules instead of AI.** Every result is repeatable and explainable; tone checks are planned for Round 3.
+- **Rules instead of AI, tone included.** Every post check is repeatable, explainable and free to run. The tone check uses the kit's tone guideline plus fixed signals (avoided words, capitals, exclamation marks, hype words); it can't judge meaning, so subtle off-tone writing isn't caught.
+- **Hash chain in the same table.** Detects edits but can't prevent a database administrator from rewriting everything; anchoring the head fingerprint outside the database (for example, emailing it daily) would close that gap. Two log writes at the same moment on different serverless instances could fork the chain; verify would report it.
 
 ## 6. What to revisit as it grows
 
 - Personal accounts with Supabase Auth, organisation workspaces, and row-level security per organisation.
 - Normalised tables (drafts, versions, findings, decisions, events) with foreign keys and an append-only events table.
-- Hash-linked audit log and approval record export (Round 3).
 - Global rate limiting, nonce-based CSP, and error monitoring.
-- Background jobs for re-checking approved posts when a fact changes (Round 3).
+- Approvals reopen on fact edits immediately and on expiry when posts are next listed; a scheduled job would catch expiries with no one using the app.

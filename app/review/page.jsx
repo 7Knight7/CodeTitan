@@ -64,6 +64,7 @@ export default function ReviewPage() {
 
   const isCreator = person?.role === "Creator";
   useTour(isCreator ? "review-creator" : "review", loaded && !!person && (isCreator || !!selected || queue.length + recent.length === 0));
+  useTour("review-reopened", !isCreator && selected?.status === "in_review" && !!selected?.reopened);
   const kept = selected?.decisions?.filter((d) => d.action === "reject") || [];
   const fixed = selected?.decisions?.filter((d) => d.action !== "reject") || [];
   const visible = [...queue, ...recent].filter((d) => filter === "all" || d.status === filter);
@@ -134,6 +135,9 @@ export default function ReviewPage() {
                       <span className="mt-0.5 block truncate text-xs text-muted">{d.preview}</span>
                       <span className="mt-1 flex flex-wrap gap-x-3 text-2xs text-muted">
                         <span>{d.author}</span><span>{when(d.updated_at)}</span>
+                        {d.assigned_reviewers?.length > 0 && <span>Reviewer: {d.assigned_reviewers.join(", ")}</span>}
+                        {d.status === "in_review" && d.can_review === false && <span className="font-medium text-warning">Not assigned to you</span>}
+                        {d.status === "in_review" && d.reopened && <span className="font-medium text-warning">Approval reopened</span>}
                         {d.requires_senior && <span className="font-medium text-sensitive">Needs marketing head</span>}
                       </span>
                       {d.status === "changes_requested" && d.review?.comment && <span className="mt-1 block truncate text-xs text-warning">&ldquo;{d.review.comment}&rdquo;</span>}
@@ -156,7 +160,8 @@ export default function ReviewPage() {
                 <div className="flex flex-wrap items-start gap-3 border-b border-line px-5 py-4">
                   <div className="min-w-0 flex-1">
                     <h2 className="text-lg font-semibold tracking-tight">{selected.title}</h2>
-                    <p className="mt-0.5 text-sm text-muted">{selected.channel}, version {selected.version}, by {selected.author}</p>
+                    <p className="mt-0.5 text-sm text-muted">{selected.channel}, version {selected.version}, by {selected.author}
+                      {selected.assigned_reviewers?.length > 0 && <>, reviewed by {selected.assigned_reviewers.join(", ")}</>}</p>
                   </div>
                   <StatusChip status={selected.status} />
                 </div>
@@ -267,7 +272,17 @@ export default function ReviewPage() {
                 </Card>
               </div>
 
-              {selected.status === "in_review" && !isCreator && (
+              {selected.status === "in_review" && selected.reopened && (
+                <div data-tour="reopened"><Notice tone="warning">
+                  <span className="font-medium">Approval reopened.</span> Version {selected.reopened.version} was approved, but evidence it relied on changed: {selected.reopened.reasons.join(" ")} Check the post again before approving.
+                </Notice></div>
+              )}
+              {selected.status === "in_review" && !isCreator && selected.can_review === false && (
+                <Notice tone="info">
+                  This post is reviewed by {selected.author}&rsquo;s assigned reviewer{selected.assigned_reviewers.length > 1 ? "s" : ""} ({selected.assigned_reviewers.join(", ")}) or the marketing head. The marketing head pairs creators with reviewers on the Team page.
+                </Notice>
+              )}
+              {selected.status === "in_review" && !isCreator && selected.can_review !== false && (
                 <div className="panel overflow-hidden" data-tour="decision">
                   <div className="border-b border-line px-5 py-3.5">
                     <h3 className="section-title">Your decision</h3>

@@ -26,16 +26,17 @@ The full workflow runs end to end: brand guideline PDF in → reviewed brand kit
 - **API**: FastAPI (Python), deployed as a Vercel Python serverless function at `/api`.
 - **Storage**: Supabase Postgres, one `lbc_items` table of JSON documents (workspace records, drafts with versions and decisions, overrides, audit events), row-level security on and accessed only with the server key. Local JSON file for development.
 - **Checks**: Python regex rule engine with rule IDs, severities and citations; fact matcher with Indian-format amounts (Rs, ₹, k, lakh), percent offers, result counts and validity dates.
-- **AI**: no AI judges posts. Every finding comes from a fixed rule, a comparison with approved facts, an image measurement or brand memory learned from people's decisions, so results are repeatable and explainable. The only optional AI use is reading the brand guideline PDF (when `ANTHROPIC_API_KEY` is set), and every AI item must quote the PDF.
+- **AI**: no AI judges posts. Every finding comes from a fixed rule, a comparison with approved facts, an image measurement or brand memory learned from people's decisions, so results are repeatable and explainable. Brand guideline PDFs are read by a pattern reader too, so the product calls no AI service.
 - **Vision**: tesseract.js OCR (normal and inverted pass) and canvas pixel analysis in the browser for contrast (WCAG relative luminance), dominant colours, brand-colour share and logo match (normalised cross-correlation); colour distance to the brand palette uses CIE Lab ΔE on the server.
 - **APIs**: `GET /api/platforms`, `/api/input-schema`, `/api/validation-profile`, `POST /api/drafts/{id}/adapt`, `GET /api/drafts/{id}/results`, `POST /api/extract-text`, `POST /api/check`, `/api/drafts` (create, save, decisions, submit, review), `/api/brandkit` (parse, activate, update, reset), `/api/memory`, `/api/memory/forget`, `/api/workspace`, `/api/facts`, `/api/guidelines`, `/api/rules`, `/api/insights`, `/api/analytics`, `/api/reset`.
 
 ## Latest changes (image-first and brand kit upload)
 
-- **Brand kit from any PDF.** The marketing head uploads the brand guideline PDF; a pattern reader (always) and an AI reader (when configured) extract the brand name, colours, fonts, logo rule, required text, banned words, facts with dates, tone rules, positioning, sensitive topics and what the brand talks about. Every item shows the page and words it came from, AI items without a matching quote are dropped, and a person reviews and edits everything before activating. Indian ad rules always stay on.
+- **Brand kit from any PDF.** The marketing head uploads the brand guideline PDF; a pattern reader extracts the brand name, colours, fonts, logo rule, required text, banned words, facts with dates, tone rules, positioning, sensitive topics and what the brand talks about. Every item shows the page and words it came from, and a person reviews and edits everything before activating. Indian ad rules always stay on.
 - **Image-first checking.** Posts are checked mainly through their images (up to 5): text read from each image goes through the same rules and fact checks, plus brand-colour share, off-brand colours, logo presence, required text, contrast and alt text. The caption is an optional extra.
 - **Better image reading.** Images are enlarged, converted to greyscale and read both normally and inverted; low-confidence words are dropped, and the creator can correct the read text before checking.
-- **One brand at a time, with history kept.** The marketing head can update the live kit (a preview shows every change before it is applied, and open posts are re-checked) or reset it to switch brands (typing the brand name to confirm). Earlier posts are never deleted: they stay as read-only history, grouped by brand in Insights and Analytics.
+- **Several brands from one login.** An agency's marketing head switches between brands in the sidebar and adds new ones; each brand has its own kit, facts, posts, reviews, insights and audit log. Creators and reviewers are assigned to one or more brands and see only those, with a read-only My team page.
+- **History kept for each brand.** The marketing head can update the live kit (a preview shows every change before it is applied, and open posts are re-checked) or reset it to switch brands (typing the brand name to confirm). Earlier posts are never deleted: they stay as read-only history, grouped by brand in Insights and Analytics.
 
 ## Brand fit and brand memory
 
@@ -59,7 +60,7 @@ The full workflow runs end to end: brand guideline PDF in → reviewed brand kit
 | Server OCR with Tesseract and OpenCV | tesseract.js in the browser | Serverless hosting can't run native Tesseract; banners also stay on the user's device |
 | AI engine for claim extraction and tone (cited, retrieval-grounded) | Not in this build; all checks are rule- and fact-based | We moved the AI tone check to the final round so this build is fully repeatable and explainable; claim checking already works with exact fact matching |
 | pgvector retrieval | Not needed yet | Retrieval comes with the AI tone check in the final round |
-| Guideline compiler (brand PDF to rules) | Built: brand PDF to a draft brand kit (pattern reader, optional AI reader that must quote the PDF), confirmed by the marketing head | Brands can be onboarded without hand-writing rules |
+| Guideline compiler (brand PDF to rules) | Built: brand PDF to a draft brand kit (pattern reader, no AI), confirmed by the marketing head | Brands can be onboarded without hand-writing rules |
 | Text-only posts | Image-first, platform-aware posts (platform, format, commercial context) | Most brand mistakes are in the creative, and each platform has its own rules |
 | PDF input, logo matching | Built (PDF attachments read for text; logo matched in the browser) | Needed for image-first checking |
 | DOCX input, local model | Not built | Deferred to keep the core flow reliable |

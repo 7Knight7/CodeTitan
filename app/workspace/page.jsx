@@ -33,6 +33,7 @@ export default function WorkspacePage() {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [brandList, setBrandList] = useState(null); // for "Remove this brand"
 
   const load = useCallback(async () => {
     const [w, k] = await Promise.all([api("/workspace"), api("/brandkit")]);
@@ -41,10 +42,13 @@ export default function WorkspacePage() {
     return w;
   }, []);
   useEffect(() => { load().catch((e) => setError(e.message)); }, [load]);
+  useEffect(() => { api("/brands").then(setBrandList).catch(() => {}); }, []);
 
   // Links such as /workspace#facts point at sections that only exist once the data has loaded.
   const loaded = !!ws;
-  useTour("workspace", loaded && !ws.empty && !(kit && (mode === "setup" || mode === "update")) && !window.location.hash);
+  // Tips that match what is on screen: the sample brand (import is offered), a live kit (update it), or read-only.
+  const tourId = !ws?.can_edit ? "workspace-viewer" : ws?.live ? "workspace-live" : "workspace";
+  useTour(tourId, loaded && !ws.empty && !(kit && (mode === "setup" || mode === "update")) && !window.location.hash);
   useEffect(() => {
     if (!loaded || !window.location.hash) return;
     const t = setTimeout(() => document.getElementById(window.location.hash.slice(1))?.scrollIntoView({ block: "start" }), 60);
@@ -114,6 +118,14 @@ export default function WorkspacePage() {
     } catch (e) { setError(e.message); } finally { setBusy(""); }
   }
 
+  async function removeBrand(brand) {
+    setBusy("Removing the brand…"); clear(); setDialog(null);
+    try {
+      await api(`/brands/${brand.id}/remove`, { method: "POST", body: { confirm: brand.name } });
+      window.location.href = "/overview";
+    } catch (e) { setError(e.message); setBusy(""); }
+  }
+
   async function resetKit() {
     setBusy("Resetting…"); clear(); setDialog(null);
     try {
@@ -156,7 +168,7 @@ export default function WorkspacePage() {
         sub="One brand at a time. Upload the brand's guideline PDF, confirm what the app found, and every check uses it from then on."
         actions={ws.live && canEdit && mode !== "update" && (
           <>
-            <button className="btn btn-primary" disabled={!!busy} onClick={startUpdate}>Update brand kit</button>
+            <button className="btn btn-primary" disabled={!!busy} onClick={startUpdate} data-tour="update-kit">Update brand kit</button>
             <button className="btn btn-danger" disabled={!!busy} onClick={() => setDialog({ kind: "reset" })}><WarningIcon /> Reset brand kit</button>
             <button className="btn btn-ghost" disabled={!!busy} onClick={() => setDialog({ kind: "demo" })}><Icon name="refresh" className="h-4 w-4" />Restore the demo brand</button>
           </>
@@ -225,7 +237,7 @@ export default function WorkspacePage() {
                 <input type="file" accept="application/pdf" className="sr-only" onChange={(e) => { uploadPdf(e.target.files?.[0]); e.target.value = ""; }} />
                 <span className="flex h-10 w-10 items-center justify-center rounded-full bg-surface text-teal-dark shadow-sm ring-1 ring-line"><Icon name={busy ? "refresh" : "upload"} className={`h-[18px] w-[18px] ${busy ? "animate-spin" : ""}`} /></span>
                 <span className="mt-3 font-medium">{busy || <>Drop the brand guideline PDF or <span className="text-teal-dark">browse</span></>}</span>
-                <span className="mt-1 text-xs text-muted">PDF with real text, up to 3 MB. {kitInfo?.ai_reader ? "Read with AI and the pattern reader." : "Read with the pattern reader (AI reading is off)."}</span>
+                <span className="mt-1 text-xs text-muted">PDF with real text, up to 3 MB. Read on our server with the pattern reader (no AI).</span>
               </label>
               <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-line p-3">
                 <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-md bg-canvas ring-1 ring-line">
@@ -478,10 +490,40 @@ export default function WorkspacePage() {
         <ul className="grid gap-3 text-sm text-muted sm:grid-cols-2">
           <li className="flex gap-2"><Icon name="check" className="mt-0.5 h-4 w-4 shrink-0 text-teal-dark" />Post images are read in the browser; only the read text, measurements and a small preview for the reviewer are sent.</li>
           <li className="flex gap-2"><Icon name="check" className="mt-0.5 h-4 w-4 shrink-0 text-teal-dark" />Post checks use fixed rules and approved facts only; no AI judges posts.</li>
-          <li className="flex gap-2"><Icon name="check" className="mt-0.5 h-4 w-4 shrink-0 text-teal-dark" />{kitInfo?.ai_reader ? "Brand kit PDFs are read with an AI service; every extracted item must quote the PDF and is confirmed by the marketing head." : "Brand kit PDFs are read on our server without AI."}</li>
+          <li className="flex gap-2"><Icon name="check" className="mt-0.5 h-4 w-4 shrink-0 text-teal-dark" />Brand kit PDFs are read on our server without AI, and every item is confirmed by the marketing head.</li>
           <li className="flex gap-2"><Icon name="check" className="mt-0.5 h-4 w-4 shrink-0 text-teal-dark" />{ws.password_required ? "Sign-in uses a hashed password and a signed, HttpOnly session" : "Demo sign-in: no password, but every visitor gets a signed, HttpOnly session"}; roles are enforced by the server.</li>
         </ul>
       </Card>
+
+      {canEdit && brandList && (() => {
+        const brand = brandList.brands.find((b) => b.current);
+        if (!brand) return null;
+        const only = brandList.brands.length < 2;
+        return (
+          <section className="panel border-blocker-vivid/30 p-5" data-testid="remove-brand">
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-blocker"><WarningIcon /> Remove this brand</h2>
+            <p className="mt-1.5 text-sm text-muted">
+              Deletes <span className="font-medium text-ink">{brand.name}</span> from the workspace for good: its brand kit, approved facts, rules, every post with its versions and reviews,
+              brand memory, insights and audit history. People keep their accounts; anyone who only worked on this brand will need a new brand on the Team page.
+              To keep the history and start the brand again instead, use Reset brand kit at the top.
+            </p>
+            {only
+              ? <p className="mt-3 text-xs text-muted">This is the only brand, so it can&rsquo;t be removed. Add another brand first.</p>
+              : <button className="btn btn-danger mt-3" disabled={!!busy} onClick={() => setDialog({ kind: "remove", brand })}>Remove {brand.name}</button>}
+          </section>
+        );
+      })()}
+
+      {dialog?.kind === "remove" && (
+        <DangerDialog title={`Remove ${dialog.brand.name} completely?`} confirmWord={dialog.brand.name} action="Remove brand permanently"
+          onCancel={() => setDialog(null)} onConfirm={() => removeBrand(dialog.brand)}
+          items={[
+            "The brand kit: colours, logo, banned words, required text, facts and guidelines",
+            `Every post of this brand${ws.post_count || ws.archived_count ? ` (${ws.post_count + (ws.archived_count || 0)})` : ""}, with its versions, decisions and reviews`,
+            "Its brand memory, insights, analytics and audit history",
+          ]}
+          note="This cannot be undone. People keep their accounts, but stop working on this brand." />
+      )}
 
       {dialog?.kind === "reset" && (
         <DangerDialog title={`Reset the ${ws.meta.name} brand kit?`} confirmWord={ws.meta.name} action="Reset brand kit"
@@ -579,7 +621,7 @@ function DangerDialog({ title, items, note, confirmWord, action, onCancel, onCon
 
 function Src({ item }) {
   if (!item?.quote) return null;
-  return <span className="mt-1 block text-xs text-muted" title={item.quote}>From {item.page ? `page ${item.page}` : "the PDF"} ({item.reader === "AI" ? "AI" : "pattern"}): &ldquo;{item.quote.slice(0, 70)}{item.quote.length > 70 ? "…" : ""}&rdquo;</span>;
+  return <span className="mt-1 block text-xs text-muted" title={item.quote}>From {item.page ? `page ${item.page}` : "the PDF"}: &ldquo;{item.quote.slice(0, 70)}{item.quote.length > 70 ? "…" : ""}&rdquo;</span>;
 }
 
 function ItemList({ label, items, onChange }) {

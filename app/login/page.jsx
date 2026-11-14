@@ -4,6 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { ROLES } from "@/components/RoleProvider";
 import Icon, { Logo } from "@/components/Icon";
+import { PasswordInput } from "@/components/AuthFrame";
 
 const ROLE_HELP = {
   Creator: "Writes posts, fixes issues and sends them for review.",
@@ -19,29 +20,38 @@ function Login() {
   const params = useSearchParams();
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("Creator");
-  const [needsPassword, setNeedsPassword] = useState(null); // null while asking the server
-  const [brand, setBrand] = useState("");
+  const [health, setHealth] = useState(null); // { auth_mode, password_required, setup_needed, brand }
+  const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    api("/health").then((h) => { setNeedsPassword(!!h.password_required); setBrand(h.brand || ""); })
-      .catch(() => setNeedsPassword(true));
+    api("/health").then(setHealth).catch(() => setHealth({ auth_mode: "password", password_required: true }));
   }, []);
+  const mode = health?.auth_mode;
+  const needsPassword = health ? !!health.password_required : null;
+  const brand = health?.brand || "";
 
-  async function submit(e) {
-    e.preventDefault();
+  const go = () => {
+    const next = params.get("next") || "/overview"; // the guided demo lives on Overview
+    window.location.href = next.startsWith("/") && !next.startsWith("//") ? next : "/"; // no open redirects
+  };
+
+  async function run(fn) {
     setBusy(true); setError("");
-    try {
-      await api("/login", { method: "POST", body: { password: needsPassword ? password : "", role } });
-      const next = params.get("next") || "/overview"; // the guided demo lives on Overview
-      window.location.href = next.startsWith("/") && !next.startsWith("//") ? next : "/"; // no open redirects
-    } catch (err) {
-      setError(err.message);
-      setBusy(false);
-    }
+    try { await fn(); } catch (err) { setError(err.message); setBusy(false); }
   }
 
+  const submitDemo = (e) => { e.preventDefault(); run(async () => { await api("/login", { method: "POST", body: { password: needsPassword ? password : "", role } }); go(); }); };
+  const submitAccount = (e) => {
+    e.preventDefault();
+    run(async () => {
+      await api("/login/account", { method: "POST", body: { email, password } });
+      go();
+    });
+  };
+
+  const sub = brand && brand !== "No brand kit yet" ? ` for ${brand}` : "";
   return (
     <div className="grid min-h-screen lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
       <ProductSample />
@@ -52,43 +62,88 @@ function Login() {
             <span className="text-lg font-semibold tracking-tight">Live Brand Check</span>
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
-          <p className="mt-1.5 text-sm leading-6 text-muted">
-            Pre-publication brand and ad-claim checks{brand && brand !== "No brand kit yet" ? ` for ${brand}` : ""}. Choose who you are to start.
-          </p>
-          <p className="mt-4 flex items-start gap-2.5 rounded-lg bg-teal-soft/70 px-3.5 py-2.5 text-sm ring-1 ring-inset ring-teal/25">
-            <Icon name="checkCircle" className="mt-0.5 h-4 w-4 shrink-0 text-teal-dark" />
-            <span>No setup needed. A sample brand kit is already loaded, and a guided demo opens after you continue.</span>
-          </p>
-          <form onSubmit={submit} className="mt-6 space-y-5">
-            {needsPassword && (
-              <div>
-                <label className="label" htmlFor="password">Password</label>
-                <input id="password" type="password" autoComplete="current-password" required maxLength={128}
-                  className="field" value={password} onChange={(e) => setPassword(e.target.value)} />
-              </div>
-            )}
-            <fieldset>
-              <legend className="label">Continue as</legend>
-              <div className="space-y-2">
-                {Object.entries(ROLES).map(([r, name]) => (
-                  <label key={r} className={`flex cursor-pointer items-center gap-3 rounded-lg border bg-surface px-3.5 py-3 transition-colors ${role === r ? "border-teal ring-1 ring-teal" : "border-line hover:border-line-strong"}`}>
-                    <input type="radio" name="role" value={r} checked={role === r} onChange={() => setRole(r)} className="sr-only" />
-                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${role === r ? "bg-teal text-ink" : "bg-canvas text-muted ring-1 ring-line"}`} aria-hidden>{name.charAt(0)}</span>
-                    <span className="min-w-0 flex-1"><span className="block text-sm font-medium">{name}</span><span className="block text-xs text-muted">{ROLE_HELP[r]}</span></span>
-                    <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${role === r ? "border-teal bg-teal" : "border-line-strong"}`} aria-hidden>
-                      {role === r && <span className="h-1.5 w-1.5 rounded-full bg-surface" />}
-                    </span>
-                  </label>
-                ))}
-              </div>
-              <p className="mt-2 text-xs text-muted">You can switch roles later from the account menu.</p>
-            </fieldset>
-            {error && <p role="alert" className="rounded-md bg-blocker-soft px-3 py-2 text-sm text-blocker">{error}</p>}
-            <button className="btn btn-teal w-full py-2.5" disabled={busy || needsPassword === null || (needsPassword && !password)}>
-              {busy ? "Opening…" : needsPassword ? "Sign in" : "Continue"}
-            </button>
-            {needsPassword === false && <p className="text-center text-xs text-muted">Demo access: no password needed.</p>}
-          </form>
+
+          {mode === "accounts" && (
+            <>
+              <p className="mt-1.5 text-sm leading-6 text-muted">Pre-publication brand and ad-claim checks{sub}. Sign in with your work account.</p>
+              {health.setup_needed && (
+                <p className="mt-4 flex items-start gap-2.5 rounded-lg bg-teal-soft/70 px-3.5 py-2.5 text-sm ring-1 ring-inset ring-teal/25">
+                  <Icon name="sparkle" className="mt-0.5 h-4 w-4 shrink-0 text-teal-dark" />
+                  <span>No accounts yet. <a href="/setup" className="font-medium underline">Set up the first account</a> (the marketing head).</span>
+                </p>
+              )}
+              {health.demo_accounts?.length > 0 && (
+                <div className="mt-4 rounded-lg bg-teal-soft/70 p-3.5 ring-1 ring-inset ring-teal/25">
+                  <p className="flex items-center gap-2 text-sm font-medium"><Icon name="user" className="h-4 w-4 text-teal-dark" /> Demo accounts for testing</p>
+                  <p className="mt-0.5 text-xs text-muted">Pick one to fill in the form, then press Sign in. Fictional demo data.</p>
+                  <ul className="mt-2.5 space-y-1.5">
+                    {health.demo_accounts.map((a) => (
+                      <li key={a.email} className="flex items-center gap-3 rounded-md bg-surface px-3 py-2 text-sm ring-1 ring-inset ring-line">
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-medium">{a.name}</span>
+                          <span className="block break-all font-mono text-xs text-muted">{a.email} · {a.password}</span>
+                        </span>
+                        <button type="button" className="btn btn-sm shrink-0" onClick={() => { setEmail(a.email); setPassword(a.password); setError(""); }}
+                          aria-label={`Use the ${a.name} demo account`}>Use</button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <form onSubmit={submitAccount} className="mt-6 space-y-4">
+                <div>
+                  <label className="label" htmlFor="email">Work email</label>
+                  <input id="email" type="email" autoComplete="username" required maxLength={254} className="field" value={email} onChange={(e) => setEmail(e.target.value)} />
+                </div>
+                <div>
+                  <label className="label" htmlFor="password">Password</label>
+                  <PasswordInput id="password" value={password} onChange={setPassword} />
+                </div>
+                {error && <p role="alert" className="rounded-md bg-blocker-soft px-3 py-2 text-sm text-blocker">{error}</p>}
+                <button className="btn btn-teal w-full py-2.5" disabled={busy || !email || !password}>{busy ? "Signing in…" : "Sign in"}</button>
+                <p className="text-center text-xs text-muted">New here? Ask your marketing head for an invitation link. Forgot your password? Ask them to send you a new invitation.</p>
+              </form>
+            </>
+          )}
+
+          {mode && mode !== "accounts" && (
+            <>
+              <p className="mt-1.5 text-sm leading-6 text-muted">Pre-publication brand and ad-claim checks{sub}. Choose who you are to start.</p>
+              <p className="mt-4 flex items-start gap-2.5 rounded-lg bg-teal-soft/70 px-3.5 py-2.5 text-sm ring-1 ring-inset ring-teal/25">
+                <Icon name="checkCircle" className="mt-0.5 h-4 w-4 shrink-0 text-teal-dark" />
+                <span>No setup needed. A sample brand kit is already loaded, and a guided demo opens after you continue.</span>
+              </p>
+              <form onSubmit={submitDemo} className="mt-6 space-y-5">
+                {needsPassword && (
+                  <div>
+                    <label className="label" htmlFor="password">Password</label>
+                    <PasswordInput id="password" value={password} onChange={setPassword} />
+                  </div>
+                )}
+                <fieldset>
+                  <legend className="label">Continue as</legend>
+                  <div className="space-y-2">
+                    {Object.entries(ROLES).map(([r, name]) => (
+                      <label key={r} className={`flex cursor-pointer items-center gap-3 rounded-lg border bg-surface px-3.5 py-3 transition-colors ${role === r ? "border-teal ring-1 ring-teal" : "border-line hover:border-line-strong"}`}>
+                        <input type="radio" name="role" value={r} checked={role === r} onChange={() => setRole(r)} className="sr-only" />
+                        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${role === r ? "bg-teal text-ink" : "bg-canvas text-muted ring-1 ring-line"}`} aria-hidden>{name.charAt(0)}</span>
+                        <span className="min-w-0 flex-1"><span className="block text-sm font-medium">{name}</span><span className="block text-xs text-muted">{ROLE_HELP[r]}</span></span>
+                        <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${role === r ? "border-teal bg-teal" : "border-line-strong"}`} aria-hidden>
+                          {role === r && <span className="h-1.5 w-1.5 rounded-full bg-surface" />}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-xs text-muted">You can switch roles later from the account menu.</p>
+                </fieldset>
+                {error && <p role="alert" className="rounded-md bg-blocker-soft px-3 py-2 text-sm text-blocker">{error}</p>}
+                <button className="btn btn-teal w-full py-2.5" disabled={busy || (needsPassword && !password)}>
+                  {busy ? "Opening…" : needsPassword ? "Sign in" : "Continue"}
+                </button>
+                {needsPassword === false && <p className="text-center text-xs text-muted">Demo access: no password needed.</p>}
+              </form>
+            </>
+          )}
         </div>
       </div>
     </div>
