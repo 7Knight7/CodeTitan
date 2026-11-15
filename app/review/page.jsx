@@ -1,4 +1,5 @@
 "use client";
+import { journeyEvent } from "@/lib/journey";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { api, when } from "@/lib/api";
@@ -56,6 +57,7 @@ export default function ReviewPage() {
     try {
       const d = await api(`/drafts/${selected.id}/review`, { method: "POST", body: { action, comment } });
       setNotice(action === "approve" ? `Approved version ${d.version}. It is now recorded in the history.` : "Sent back to the creator with your comment.");
+      journeyEvent("reviewed");
       await load();
       setSelected(await api(`/drafts/${d.id}`));
       setComment("");

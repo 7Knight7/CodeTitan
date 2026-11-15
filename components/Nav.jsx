@@ -21,6 +21,7 @@ export const LINKS = [
   { href: "/insights", label: "Insights", icon: "insights", group: 2 },
   { href: "/analytics", label: "Analytics", icon: "analytics", group: 2 },
   { href: "/team", label: "Team", icon: "user", group: 3, accounts: true },
+  { href: "/extension", label: "Chrome extension", icon: "globe", group: 3 },
 ];
 
 const isActive = (l, path) => !l.anchor && (l.href === "/" ? path === "/" : path.startsWith(l.href));

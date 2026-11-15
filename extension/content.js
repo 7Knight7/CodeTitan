@@ -37,6 +37,19 @@
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const show = (html, colour) => { $("body").innerHTML = html; dot.style.background = colour || "#9aa3b2"; if (!host.isConnected) document.documentElement.appendChild(host); };
 
+  // ---------- first time on Instagram or Facebook: how to try it ----------
+  chrome.storage.local.get({ lbcGuideSeen: false }).then(({ lbcGuideSeen }) => {
+    if (lbcGuideSeen || root) return;
+    const where = site === "facebook" ? "Facebook" : "Instagram";
+    const steps = site === "facebook"
+      ? ["Click <b>What's on your mind?</b> to start a post.", "Add a photo if you like, and type your caption.", "This panel checks it as you type. Fix what you agree with."]
+      : ["Click <b>Create</b> (+) in the left menu, then <b>Post</b>.", "<b>Select from computer</b>: choose an image (try the sample banner from the extension page), then <b>Next</b>, <b>Next</b>.", "Type in <b>Write a caption…</b>. This panel checks the caption and the image as you go."];
+    show(`<p><b>Live Brand Check is on ✓</b></p><p class="muted">Try it on a new ${where} post:</p>`
+      + steps.map((t, i) => `<div class="row" style="flex-wrap:nowrap"><span class="pill" style="background:#e6edfb;color:#3156b8">${i + 1}</span><span>${t}</span></div>`).join("")
+      + `<p class="muted">Nothing is posted or changed for you: don't press Share while testing.</p><button id="lbc-got-it">Got it</button>`, "#3156b8");
+    $("lbc-got-it").onclick = () => { chrome.storage.local.set({ lbcGuideSeen: true }); show("<p class='muted'>Start writing a post. Captions, images and banners in the composer are checked as you go.</p>"); };
+  }).catch(() => {});
+
   // ---------- reading the composer ----------
   const isBox = (el) => el && (el.tagName === "TEXTAREA" || (el.isContentEditable && el.getAttribute("role") === "textbox") || el.getAttribute?.("contenteditable") === "true");
   const composerOf = (el) => el.closest('[role="dialog"]') || el.closest("form") || el.parentElement?.parentElement?.parentElement || document.body;

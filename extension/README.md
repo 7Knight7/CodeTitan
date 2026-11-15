@@ -11,7 +11,9 @@ The extension checks a post while you write it on Instagram or Facebook. It cove
 
 ## Install (developer mode)
 
-1. Build the extension. This copies the OCR engine and `lib/image.js` into `extension/vendor/`:
+The easiest way: open **Chrome extension** in the app's sidebar. It has a download button, the steps below with copy buttons, a live "installed and connected" check, and an Instagram try-out with a sample banner and caption.
+
+1. Build the extension (only needed after changing it; the built files and `public/downloads/live-brand-check-extension.zip` are in the repo). This copies the OCR engine and `lib/image.js` into `extension/vendor/` and packs the zip:
 
    ```bash
    npm install

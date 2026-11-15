@@ -2,13 +2,25 @@
   "manifest_version": 3,
   "name": "Live Brand Check",
   "short_name": "Brand Check",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Checks Instagram and Facebook captions, images and banners against your brand kit and Indian ad rules while you write. Nothing is changed or posted for you.",
   "minimum_chrome_version": "116",
-  "icons": { "16": "icon16.png", "48": "icon48.png", "128": "icon128.png" },
-  "action": { "default_popup": "popup.html", "default_title": "Live Brand Check" },
-  "background": { "service_worker": "background.js" },
-  "permissions": ["storage", "offscreen"],
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Live Brand Check"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": [
+    "storage",
+    "offscreen"
+  ],
   "host_permissions": [
     "https://live-brand-check.vercel.app/*",
     "http://localhost/*",
@@ -16,11 +28,30 @@
     "https://*.cdninstagram.com/*",
     "https://*.fbcdn.net/*"
   ],
-  "optional_host_permissions": ["https://*/*"],
+  "optional_host_permissions": [
+    "https://*/*"
+  ],
   "content_scripts": [
     {
-      "matches": ["https://www.instagram.com/*", "https://www.facebook.com/*", "https://business.facebook.com/*"],
-      "js": ["content.js"],
+      "matches": [
+        "https://www.instagram.com/*",
+        "https://www.facebook.com/*",
+        "https://business.facebook.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://live-brand-check.vercel.app/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ],
+      "js": [
+        "detect.js"
+      ],
       "run_at": "document_idle"
     }
   ],

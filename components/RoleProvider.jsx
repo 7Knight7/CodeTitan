@@ -12,8 +12,8 @@ export const ROLES = {
 
 // Pages each role can open (null = all). The server enforces the same limits on its data.
 const PAGES = {
-  Creator: ["/", "/overview", "/review", "/workspace", "/drafts", "/account", "/team"],
-  Reviewer: ["/overview", "/review", "/workspace", "/insights", "/analytics", "/drafts", "/account", "/team"],
+  Creator: ["/", "/overview", "/review", "/workspace", "/drafts", "/account", "/team", "/extension"],
+  Reviewer: ["/overview", "/review", "/workspace", "/insights", "/analytics", "/drafts", "/account", "/team", "/extension"],
   "Marketing head": null,
 };
 const HOME = { Creator: "/", Reviewer: "/review", "Marketing head": "/" };

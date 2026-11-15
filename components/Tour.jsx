@@ -30,7 +30,7 @@ export const TOURS = {
     { target: NAV, title: "Every screen is here", body: "Content checker to write and check posts, Review & approvals, Brand guidelines, Insights and Analytics." },
     { target: "account", title: "Who is who", body: "Priya writes posts, Arjun reviews them, and Meera (marketing head) approves sensitive posts and manages the brand kit. Each guided-demo step opens as the right person for you." },
     { target: "help", title: "Tips are always here", body: "Press this to see the tips for any screen again." },
-    { target: "guide-step-1", title: "Your next step", body: "Press Open on step 1 to see what the checker catches." },
+    { target: "guide-step-1", title: "Your next step", body: "Press Start the guided demo: a guide card walks you through the whole product, switching person for you at each step." },
   ],
   checker: [
     { target: "examples", title: "Try a ready-made example", body: "Pick any example: it fills in a real post and checks it for you. You can also write your own." },

@@ -13,7 +13,8 @@ mkdirSync(join(vendor, "core"), { recursive: true });
 const nm = (p) => join(root, "node_modules", p);
 copyFileSync(nm("tesseract.js/dist/tesseract.min.js"), join(vendor, "tesseract.min.js"));
 copyFileSync(nm("tesseract.js/dist/worker.min.js"), join(vendor, "worker.min.js"));
-for (const f of ["tesseract-core-simd-lstm.wasm.js", "tesseract-core-lstm.wasm.js", "tesseract-core-simd.wasm.js", "tesseract-core.wasm.js"]) {
+// The extension reads text with the LSTM engine only, so only those two cores are needed (with and without SIMD).
+for (const f of ["tesseract-core-simd-lstm.wasm.js", "tesseract-core-lstm.wasm.js"]) {
   copyFileSync(nm(`tesseract.js-core/${f}`), join(vendor, "core", f));
 }
 

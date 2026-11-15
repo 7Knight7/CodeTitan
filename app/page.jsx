@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api, draftsChanged, STATUS_LABEL } from "@/lib/api";
+import { journeyEvent } from "@/lib/journey";
 import { useRole } from "@/components/RoleProvider";
 import ProofText, { keyOf } from "@/components/ProofText";
 import IssueCard from "@/components/IssueCard";
@@ -204,6 +205,7 @@ function WritePage() {
       const d = await api(`/drafts/${draft.id}/submit`, { method: "POST" });
       setDraft(d);
       setNotice(`Version ${d.version} sent for review.` + (d.requires_senior ? " It mentions a sensitive topic, so the marketing head must approve it." : ""));
+      journeyEvent("sent");
       loadMine(); draftsChanged();
     } catch (e) {
       setSendError(e.detail?.blockers ? `${e.message} Open: ${e.detail.blockers.join(", ")}.` : e.message);

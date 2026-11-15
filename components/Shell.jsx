@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { api, DRAFTS_EVENT, PUBLIC_PAGES } from "@/lib/api";
 import Nav from "./Nav";
 import { TourProvider } from "./Tour";
+import Journey from "./Journey";
 
 const KEY = "lbc-sidebar-collapsed";
 const WorkspaceContext = createContext(null);
@@ -43,6 +44,7 @@ export default function Shell({ children }) {
           </footer>
         </div>
       </div>
+      <Journey />
       </TourProvider>
     </WorkspaceContext.Provider>
   );
