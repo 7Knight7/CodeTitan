@@ -31,7 +31,7 @@ async function call(server, path, opts = {}) {
 async function brandKit(server) {
   if (kitCache && kitCache.server === server && Date.now() - kitCache.at < 10 * 60 * 1000) return kitCache;
   const ws = await call(server, "/workspace");
-  kitCache = { at: Date.now(), server, name: ws.meta?.name, colours: (ws.meta?.brand_colours || []).map((c) => c.hex), logo: ws.meta?.logo || null };
+  kitCache = { at: Date.now(), server, name: ws.meta?.name, colours: (ws.meta?.brand_colours || []).filter((c) => c?.hex).map((c) => ({ name: c.name || "", hex: c.hex })), logo: ws.meta?.logo || null };
   return kitCache;
 }
 
