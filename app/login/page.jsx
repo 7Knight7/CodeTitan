@@ -6,6 +6,10 @@ import { ROLES } from "@/components/RoleProvider";
 import Icon, { Logo } from "@/components/Icon";
 import { PasswordInput } from "@/components/AuthFrame";
 
+// Demo accounts are listed in the order the guided demo visits them: Priya, then Arjun, then Meera.
+const DEMO_ORDER = ["Creator", "Reviewer", "Marketing head"];
+const byDemoOrder = (a, b) => DEMO_ORDER.indexOf(a.role) - DEMO_ORDER.indexOf(b.role);
+
 const ROLE_HELP = {
   Creator: "Writes posts, fixes issues and sends them for review.",
   Reviewer: "Approves posts or asks for changes.",
@@ -77,7 +81,7 @@ function Login() {
                   <p className="flex items-center gap-2 text-sm font-medium"><Icon name="user" className="h-4 w-4 text-teal-dark" /> Demo accounts for testing</p>
                   <p className="mt-0.5 text-xs text-muted">Pick one to fill in the form, then press Sign in. Fictional demo data.</p>
                   <ul className="mt-2.5 space-y-1.5">
-                    {health.demo_accounts.map((a) => (
+                    {[...health.demo_accounts].sort(byDemoOrder).map((a) => (
                       <li key={a.email} className="flex items-center gap-3 rounded-md bg-surface px-3 py-2 text-sm ring-1 ring-inset ring-line">
                         <span className="min-w-0 flex-1">
                           <span className="block font-medium">{a.name}</span>

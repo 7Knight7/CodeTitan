@@ -74,7 +74,7 @@ export default function ExtensionPage() {
       <Card title="Add it to Chrome in 7 steps" sub="About 2 minutes. Free, no Chrome Web Store account needed." bodyClass="p-0">
         <ol className="divide-y divide-line">
           <Step n={1} title="Download the extension">
-            <p><a href={ZIP} download className="btn btn-teal btn-sm"><Icon name="download" className="h-4 w-4" />Download live-brand-check-extension.zip</a> <span className="ml-1 text-xs">about 3 MB</span></p>
+            <p><a href={ZIP} download className="btn btn-teal btn-sm" data-tour="extension-download"><Icon name="download" className="h-4 w-4" />Download live-brand-check-extension.zip</a> <span className="ml-1 text-xs">about 3 MB</span></p>
           </Step>
           <Step n={2} title="Unzip it">
             <p>Open your Downloads folder, right-click the zip and choose <b>Extract All…</b> (Mac: double-click it). You get a folder called <b>live-brand-check-extension</b>.</p>

@@ -88,6 +88,12 @@ export default function Journey() {
         )}
         {j.done && stage.doneText && <p className="flex items-center gap-2 rounded-md bg-approved-soft px-3 py-2 text-sm text-approved"><Icon name="checkCircle" className="h-4 w-4 shrink-0" />{stage.doneText}</p>}
         {!ready && !wrongPerson && <p className="text-xs text-muted">The next step opens when you&rsquo;ve done this.</p>}
+        {ready && !wrongPerson && next && next.role !== stage.role && (
+          <p className="flex items-start gap-2 rounded-md bg-teal-soft px-3 py-2 text-sm text-ink">
+            <Icon name="user" className="mt-0.5 h-4 w-4 shrink-0 text-teal-dark" />
+            <span>{stage.doneOn ? `${stage.who.split(" (")[0]}'s part is done. Next, ` : "When you've looked around, "}<b>{next.who}</b> takes over: press the button to switch.</span>
+          </p>
+        )}
         {error && <p role="alert" className="rounded bg-blocker-soft px-2 py-1 text-xs text-blocker">{error}</p>}
         <div className="flex flex-wrap items-center gap-2 pt-1">
           {wrongPerson ? (
