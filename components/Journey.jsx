@@ -35,6 +35,15 @@ export default function Journey() {
     return () => window.removeEventListener("lbc:journey", onEvent);
   }, []);
 
+  // While a screen tip is open, step aside so only one guide shows at a time; come back when it closes.
+  const [tipOpen, setTipOpen] = useState(false);
+  useEffect(() => {
+    setTipOpen(!!window.__lbcTipOpen);
+    const onTip = (e) => setTipOpen(!!e.detail);
+    window.addEventListener("lbc:tip", onTip);
+    return () => window.removeEventListener("lbc:tip", onTip);
+  }, []);
+
   // Point at the part of the screen the step is about.
   const stage = j ? STAGES[j.i] : null;
   useEffect(() => {
@@ -47,7 +56,7 @@ export default function Journey() {
     return () => { clearInterval(t); el?.classList.remove("lbc-highlight"); };
   }, [stage?.highlight, path]);
 
-  if (!j || !stage || !person) return null;
+  if (!j || !stage || !person || tipOpen) return null;
   const last = j.i === STAGES.length - 1;
   const next = STAGES[j.i + 1];
   const wrongPerson = person.role !== stage.role;

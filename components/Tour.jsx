@@ -2,7 +2,6 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { becomePerson, NO_DEMO_ACCOUNT } from "@/lib/person";
-import { readJourney } from "@/lib/journey";
 import { useRole } from "./RoleProvider";
 import Icon from "./Icon";
 
@@ -145,16 +144,6 @@ export function TourProvider({ children }) {
   useEffect(() => { setPrefs(key ? read(key) : null); setActive(null); }, [key]);
   useEffect(() => { setActive(null); }, [path]);
 
-  // While the guided demo journey is running, its card is the guide: screen tips don't open on their own
-  // (two guides at once is confusing). The "?" button still shows them on request.
-  const [journeyOn, setJourneyOn] = useState(false);
-  useEffect(() => {
-    const sync = () => setJourneyOn(!!readJourney());
-    sync();
-    window.addEventListener("lbc:journey-change", sync);
-    window.addEventListener("storage", sync);
-    return () => { window.removeEventListener("lbc:journey-change", sync); window.removeEventListener("storage", sync); };
-  }, []);
 
   const update = useCallback((fn) => setPrefs((p) => {
     const k = keyRef.current;
@@ -180,7 +169,7 @@ export function TourProvider({ children }) {
 
   // Start the first ready tour that hasn't been seen, once its screen has had a moment to render.
   useEffect(() => {
-    if (!prefs || prefs.off || active || journeyOn) return undefined;
+    if (!prefs || prefs.off || active) return undefined;
     const id = readyIds.find((x) => TOURS[x] && !prefs.seen.includes(x));
     if (!id) return undefined;
     const t = setTimeout(() => {
@@ -189,7 +178,14 @@ export function TourProvider({ children }) {
       else finish(id); // nothing to point at on this screen
     }, 400);
     return () => clearTimeout(t);
-  }, [prefs, active, readyIds, finish, journeyOn]);
+  }, [prefs, active, readyIds, finish]);
+
+  // Tell the guided-demo card when a tip is on screen, so it can step aside and only one guide shows at a time.
+  const tipOpen = !!active;
+  useEffect(() => {
+    window.__lbcTipOpen = tipOpen;
+    window.dispatchEvent(new CustomEvent("lbc:tip", { detail: tipOpen }));
+  }, [tipOpen]);
 
   // Stable (reads the ready list from a ref) so pages registering tips never re-trigger each other.
   const replay = useCallback(() => {
