@@ -1,6 +1,6 @@
 # GitHub opens a pull request when a package the project uses has a security fix or update.
 # Small updates (minor and patch) come grouped in one pull request per week.
-# Major versions of the website framework (Next.js, React, Tailwind) are skipped: they change how the
+# Major versions of the website framework (Next.js, React, Tailwind) and the OCR engine are skipped: they change how the
 # code must be written (React 19 needs Next.js 15+, Tailwind 4 has a new setup), so the build fails
 # until the team does that upgrade on purpose (see the roadmap in SUBMISSION.md).
 # Security fixes are still proposed for every package.
@@ -30,6 +30,9 @@ updates:
       - dependency-name: react-dom
         update-types: ["version-update:semver-major"]
       - dependency-name: tailwindcss
+        update-types: ["version-update:semver-major"]
+      # The OCR engine used by the app and the Chrome extension; a new major version needs testing on real banners first.
+      - dependency-name: tesseract.js
         update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: "/"
