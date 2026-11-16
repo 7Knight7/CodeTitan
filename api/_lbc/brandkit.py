@@ -9,7 +9,6 @@ Nothing here changes the live workspace. The marketing head reviews the draft an
 import io
 import re
 
-from pypdf import PdfReader
 
 MAX_PDF_BYTES = 4 * 1024 * 1024
 HEX_RE = re.compile(r"#[0-9A-Fa-f]{6}\b")
@@ -30,7 +29,11 @@ def read_pdf(data: bytes):
         raise ValueError("The PDF is larger than 4 MB. Export it again with compressed images.")
     if not data.startswith(b"%PDF"):
         raise ValueError("That file is not a PDF.")
+    if any(tag in data for tag in (b"/JavaScript", b"/JS ", b"/JS(", b"/Launch", b"/EmbeddedFile", b"/RichMedia")):
+        # Only text is ever read from a brand PDF, but files carrying scripts or attachments are refused outright.
+        raise ValueError("The PDF contains scripts or attached files. Export it again as a plain PDF (File > Save as PDF).")
     try:
+        from pypdf import PdfReader  # loaded only when a PDF is read: keeps the API's start-up fast
         reader = PdfReader(io.BytesIO(data))
         if reader.is_encrypted:
             raise ValueError("The PDF is password-protected. Remove the password and upload it again.")

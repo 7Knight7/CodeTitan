@@ -27,7 +27,7 @@ export const TOURS = {
       body: "It checks marketing posts against a brand kit and Indian advertising rules before they go out. A sample brand is already loaded, so you can try everything straight away. These tips show you around." },
     { target: "guide", title: "Start here", body: "The guided demo walks you through the product. Each step opens the right screen as the right person." },
     { target: "brand-switcher", title: "Your brands", body: "An agency works on several brands. Switch brands here: each one has its own brand kit, approved facts, posts, reviews and team. Marketing heads see every brand and can add one." },
-    { target: NAV, title: "Every screen is here", body: "Content checker to write and check posts, Review & approvals, Brand guidelines, Insights and Analytics." },
+    { target: NAV, title: "Every screen is here", body: "Every screen you use is in this menu: the brand kit, approved facts, insights, analytics, your team and the Chrome extension." },
     { target: "account", title: "Who is who", body: "Priya writes posts, Arjun reviews them, and Meera (marketing head) approves sensitive posts and manages the brand kit. Each guided-demo step opens as the right person for you." },
     { target: "help", title: "Tips are always here", body: "Press this to see the tips for any screen again." },
     { target: "guide-step-1", title: "Your next step", body: "Press Start the guided demo: a guide card walks you through the whole product, switching person for you at each step." },

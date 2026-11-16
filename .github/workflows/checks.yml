@@ -1,0 +1,39 @@
+# Runs on every push and pull request: the test suite, plus security scans of the Python and npm packages.
+# A red cross on GitHub means something failed; open the run to see what.
+name: Checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt pytest
+      - run: python -m pytest -q tests
+
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Known vulnerabilities in Python packages
+        run: pip install pip-audit && pip-audit -r requirements.txt
+      - name: Known high-severity vulnerabilities in website packages
+        # Report only: Next.js 14 has fixes only in Next.js 15.5+/16 (a major upgrade planned after judging).
+        # The app doesn't use the affected features (image optimiser is off, no server actions).
+        continue-on-error: true
+        run: npm audit --omit=dev --audit-level=high

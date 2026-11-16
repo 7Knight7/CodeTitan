@@ -24,8 +24,33 @@ ROLES = {
 }
 _N, _R, _P = 2 ** 14, 8, 1
 _dev_secret = secrets.token_hex(32)  # only used when no secret is configured outside production
-_attempts = {}  # ip -> [count, window_start]; per server instance
+_attempts = {}  # ip -> [count, window_start]; used when no shared store is set (tests, scripts)
+_shared = None  # (load, save, clear_all): set by the API so every server copy shares the same counts
 MAX_ATTEMPTS, WINDOW = 5, 600
+
+
+def use_shared(load, save, clear_all):
+    """Keep sign-in attempt counts in the database, so the limit holds across all of Vercel's server copies."""
+    global _shared
+    _shared = (load, save, clear_all)
+
+
+def _key(ip):
+    return hashlib.sha256(("lbc-ip:" + (ip or "")).encode()).hexdigest()[:32]  # IP addresses are never stored
+
+
+def _get(ip):
+    if _shared:
+        rec = _shared[0](_key(ip))
+        return [int(rec.get("count", 0)), float(rec.get("start", 0))] if rec else None
+    return _attempts.get(ip)
+
+
+def _set(ip, value):
+    if _shared:
+        _shared[1](_key(ip), value)
+    else:
+        _attempts[ip] = value
 
 
 def hash_password(password, salt=None):
@@ -109,19 +134,29 @@ def read_token(token, now=None):
 
 def allow_attempt(ip):
     now = time.time()
-    count, start = _attempts.get(ip, [0, now])
-    if now - start > WINDOW:
-        count, start = 0, now
-    _attempts[ip] = [count, start]
-    return count < MAX_ATTEMPTS
+    count, start = _get(ip) or [0, now]
+    return now - start > WINDOW or count < MAX_ATTEMPTS
 
 
 def record_failure(ip):
-    _attempts.setdefault(ip, [0, time.time()])[0] += 1
+    now = time.time()
+    count, start = _get(ip) or [0, now]
+    if now - start > WINDOW:
+        count, start = 0, now
+    _set(ip, [count + 1, start])
 
 
 def clear_failures(ip):
-    _attempts.pop(ip, None)
+    if _shared:
+        _set(ip, [0, time.time()])
+    else:
+        _attempts.pop(ip, None)
+
+
+def clear_all_attempts():
+    _attempts.clear()
+    if _shared:
+        _shared[2]()
 
 
 if __name__ == "__main__":

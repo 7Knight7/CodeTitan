@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Live Brand Check",
   "short_name": "Brand Check",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Checks Instagram and Facebook captions, images and banners against your brand kit and Indian ad rules while you write. Nothing is changed or posted for you.",
   "minimum_chrome_version": "116",
   "icons": {

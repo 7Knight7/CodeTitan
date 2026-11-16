@@ -4,14 +4,15 @@ Brand used: **Sunrise Tutorials**, a fictional NEET and JEE coaching brand.
 Files: `tests/fixtures/sunrise_brand_book.pdf`, `demo/banner_wrong.png`, `demo/banner_right.png`.
 
 **Before you start**
-- Run the API (`npm run api`) and the site (`npm run dev`), then open http://localhost:3000.
-- If a brand kit is already live, go to **Brand workspace** as Meera, press **Reset brand kit** and type the brand name. Its posts stay in All history.
+- Open https://live-brand-check.vercel.app, or run it locally (`npm run api` and `npm run dev`, then http://localhost:3000; see README).
+- The three demo accounts (Meera, Priya, Arjun) and their passwords are shown on the sign-in page. After signing in once, the **Open as Priya / Arjun / Meera** buttons switch person in one click.
+- If a brand kit is already live, open **Brand guidelines** as Meera, press **Reset brand kit** and type the brand name. Its posts stay in All history. (Or add a new brand from the brand dropdown in the sidebar and use that.)
 
 ---
 
 ## 1. Meera, marketing head: the brand kit (about 1½ min)
 
-**Do:** Sign in as **Meera (marketing head)** and open **Brand workspace**. Upload `sunrise_brand_book.pdf`.
+**Do:** Sign in as **Meera (marketing head)** and open **Brand guidelines**. Upload `sunrise_brand_book.pdf`.
 
 **Say:** "Every brand starts with its own guideline PDF. The app reads it without AI. Every item shows the page and the exact line it came from."
 
@@ -31,7 +32,7 @@ Files: `tests/fixtures/sunrise_brand_book.pdf`, `demo/banner_wrong.png`, `demo/b
 
 ## 2. Priya, social media: wrong post, then the fix (about 2½ min)
 
-**Do:** In the header, switch **Acting as** to **Priya (social media)** and open **Write and check**. Choose **Instagram**, **Feed post** and **Organic**.
+**Do:** Sign in as **Priya (social media)** and open **Content checker**. Choose **Instagram**, **Feed post** and **Organic**.
 
 **Do:** Upload `banner_wrong.png`. Paste this caption and leave the alt text empty:
 > India's best NEET coaching!!! Guaranteed rank. Fees only Rs 99,000. Hurry, 50% off!
@@ -68,7 +69,7 @@ Set the alt text to `Sunrise Tutorials NEET admissions banner`. Press **Check po
 
 ## 3. Arjun, brand reviewer: the verdict (about 1 min)
 
-**Do:** Switch **Acting as** to **Arjun (brand reviewer)** and open **Review**. Select the post.
+**Do:** Press **Open as Arjun** in the message shown after sending (or sign in as Arjun) and open **Review & approvals**. Select the post.
 
 **Say:** "The reviewer sees the image, the caption, every check, and every decision the creator made. A person always makes the final call. Nobody can approve their own post, and sensitive topics like festivals or elections go to the marketing head."
 
@@ -76,10 +77,31 @@ Set the alt text to `Sunrise Tutorials NEET admissions banner`. Press **Check po
 
 **Say:** "Approved and locked. Every version, check, decision and approval is recorded with who did it and when. The app also learns from this approval in its brand memory, kept separate from the brand kit, which it never changes."
 
-**Close:** "Brand kit in, wrong post stopped, right post approved, with a source for every decision."
+---
+
+## 4. Trusted history (about 30 s, optional)
+
+**Do:** As Meera, open **Approved facts** and change the fee to Rs 1,25,000. Open the approved post again.
+
+**Say:** "The approval was tied to the fee it relied on. The fee changed, so the post is back in review with the reason. Nobody has to remember which posts used it."
+
+**Do:** On the post's history, press **Compare side by side**, point at the history check, then download the **Approval record (PDF)**.
+
+**Say:** "Each history entry carries a fingerprint of the one before it, so any later edit to the record shows up."
+
+## 5. Chrome extension (about 30 s, optional)
+
+**Do:** Open **Chrome extension** in the sidebar. Show the green "installed and connected" box (install it beforehand with the 7 steps on that page), then open an Instagram post composer and paste the sample caption.
+
+**Say:** "The same checks, beside Instagram's own composer, while you write. It only reads: it never edits or posts anything."
+
+---
+
+**Close:** "Brand kit in, wrong post stopped, right post approved, with a source for every decision. All of it free to run, with no AI deciding anything."
 
 ---
 
 **If something looks off**
 - **OCR misread:** if the image text is read slightly wrong, correct it in **Text read from the image**, then check again.
 - **Optional, to show change requests:** before approving, press **Request changes** with a comment. Priya then sees it at the top right of every page.
+- **Tone:** the wrong caption also gets tone suggestions (capitals, "!!!", "Hurry"), each citing the brand's tone guideline. They are suggestions, never blockers.

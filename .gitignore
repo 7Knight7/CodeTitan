@@ -2,9 +2,10 @@ node_modules/
 .next/
 __pycache__/
 *.pyc
-.env*
+.env
+.env.local
 .vercel
 .pytest_cache/
 .claude/
 
-extension/vendor/
+local-data.json

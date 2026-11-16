@@ -4,13 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "api": "uvicorn index:app --app-dir api --port 8000 --reload",
+    "api": "uvicorn index:app --app-dir api --port 8000 --reload --reload-dir api",
     "build": "next build",
     "start": "next start",
     "extension": "node extension/build.mjs && python extension/pack.py"
   },
   "dependencies": {
-    "next": "^14.2.15",
+    "next": "^14.2.35",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tesseract.js": "^5.1.1"

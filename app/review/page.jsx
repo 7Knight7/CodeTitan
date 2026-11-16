@@ -1,5 +1,6 @@
 "use client";
 import { journeyEvent } from "@/lib/journey";
+import SwitchTo from "@/components/SwitchTo";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { api, when } from "@/lib/api";
@@ -80,7 +81,7 @@ export default function ReviewPage() {
       <div className="grid gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]">
         <aside className="min-w-0 space-y-4">
           {isCreator && (
-            <Notice tone="info">You are acting as the creator. Switch to Arjun or Meera from the account menu to approve posts.</Notice>
+            <Notice tone="info">Here are your posts and what the reviewer decided. Reviewers approve posts. <SwitchTo role="Reviewer" href="/review">Open as Arjun (reviewer)</SwitchTo></Notice>
           )}
           {person?.role === "Reviewer" && loaded && queue.every((d) => d.requires_senior) && (
             <Notice tone="info">

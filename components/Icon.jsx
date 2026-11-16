@@ -61,10 +61,14 @@ export default function Icon({ name, className = "h-[18px] w-[18px]", strokeWidt
 /** Product mark: a check inside a speech bubble on an ink tile (follows the theme). */
 export function Logo({ className = "h-8 w-8" }) {
   return (
+    // The Live Brand Check shield (same as the browser-tab icon, app/icon.svg, and the Chrome extension's icon).
     <svg viewBox="0 0 32 32" className={className} aria-hidden>
-      <rect width="32" height="32" rx="10" className="fill-ink" />
-      <path d="M9 9.5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-4.5 3.5V21.5H9a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z" className="fill-surface" />
-      <path d="m12 15.5 2.6 2.6L20 12.8" fill="none" className="stroke-teal" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+      <rect width="32" height="32" rx="8" fill="#FFFFFF" />
+      <g transform="translate(2.24 2.24) scale(0.86)">
+        <path d="M16 2.5 5 6.5v8.2c0 7 4.7 12.6 11 14.8 6.3-2.2 11-7.8 11-14.8V6.5z" fill="#1F3A68" />
+        <circle cx="14.5" cy="14.5" r="5.2" fill="none" stroke="#F2A33A" strokeWidth="2.6" />
+        <path d="m18.4 18.4 4.2 4.2" stroke="#F2A33A" strokeWidth="2.8" strokeLinecap="round" />
+      </g>
     </svg>
   );
 }

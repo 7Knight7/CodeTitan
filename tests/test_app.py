@@ -98,12 +98,12 @@ def test_forged_or_tampered_cookie_rejected():
 
 
 def test_wrong_password_and_rate_limit():
-    auth._attempts.clear()
+    auth.clear_all_attempts()
     c = TestClient(index.app, headers=H)
     for _ in range(auth.MAX_ATTEMPTS):
         assert c.post("/api/login", json={"password": "nope"}).status_code == 401
     assert c.post("/api/login", json={"password": TEST_PW}).status_code == 429
-    auth._attempts.clear()
+    auth.clear_all_attempts()
 
 
 def test_csrf_header_required():
@@ -643,12 +643,12 @@ def _accounts_client():
     db = json.loads(st.path.read_text())
     db["user"], db["invite"] = {}, {}
     st.path.write_text(json.dumps(db))
-    auth._attempts.clear()
+    auth.clear_all_attempts()
     return TestClient(index.app, headers=H)
 
 
 def _login(email, password):
-    auth._attempts.clear()  # the per-device limit is tested separately; here we test the per-account rule
+    auth.clear_all_attempts()  # the per-device limit is tested separately; here we test the per-account rule
     return TestClient(index.app, headers=H).post("/api/login/account", json={"email": email, "password": password})
 
 
@@ -705,7 +705,7 @@ def test_accounts_setup_invites_and_roles():
     finally:
         os.environ.pop("LBC_AUTH_MODE", None)
         os.environ.pop("LBC_DEMO_ACCOUNTS", None)
-        auth._attempts.clear()
+        auth.clear_all_attempts()
 
 
 def test_three_wrong_passwords_pause_and_five_block():
@@ -753,7 +753,7 @@ def test_three_wrong_passwords_pause_and_five_block():
     finally:
         os.environ.pop("LBC_AUTH_MODE", None)
         os.environ.pop("LBC_DEMO_ACCOUNTS", None)
-        auth._attempts.clear()
+        auth.clear_all_attempts()
 
 
 def test_demo_accounts_shown_paused_but_never_blocked():
@@ -787,7 +787,7 @@ def test_demo_accounts_shown_paused_but_never_blocked():
     finally:
         os.environ.pop("LBC_AUTH_MODE", None)
         os.environ.pop("LBC_DEMO_ACCOUNTS", None)
-        auth._attempts.clear()
+        auth.clear_all_attempts()
 
 
 def test_creators_are_reviewed_only_by_their_paired_reviewers():
@@ -840,7 +840,7 @@ def test_creators_are_reviewed_only_by_their_paired_reviewers():
     finally:
         os.environ.pop("LBC_AUTH_MODE", None)
         os.environ.pop("LBC_DEMO_ACCOUNTS", None)
-        auth._attempts.clear()
+        auth.clear_all_attempts()
 
 
 # ---------- Round 3: trusted history and AI tone ----------
@@ -1043,3 +1043,32 @@ def test_marketing_head_can_remove_a_deactivated_member():
     finally:
         os.environ.pop("LBC_AUTH_MODE", None)
         os.environ.pop("LBC_DEMO_ACCOUNTS", None)
+
+
+def test_safety_shared_signin_limit_pdf_checks_and_backup():
+    from _lbc import brandkit
+    from _lbc.store import base_store
+    # the sign-in limit is kept in the database (shared by every server copy), and IP addresses aren't stored
+    get_store().reset()
+    auth.clear_all_attempts()
+    c = TestClient(index.app, headers=H)
+    for _ in range(5):
+        assert c.post("/api/login", json={"password": "wrong", "role": "Creator"}).status_code == 401
+    assert c.post("/api/login", json={"password": TEST_PW, "role": "Creator"}).status_code == 429
+    recs = base_store().list("ratelimit")
+    assert recs and recs[0]["count"] == 5 and "testclient" not in str(recs)
+    auth.clear_all_attempts()
+    # brand PDFs with scripts or attachments are refused; only text is ever read
+    bad = b"%PDF-1.4\n1 0 obj << /Type /Action /S /JavaScript /JS (app.alert(1)) >> endobj\n%%EOF"
+    try:
+        brandkit.read_pdf(bad)
+        assert False, "a PDF with a script must be refused"
+    except ValueError as e:
+        assert "scripts" in str(e)
+    # the marketing head can download a backup of every brand, without password hashes
+    hc = client("Marketing head")
+    r = hc.get("/api/backup")
+    assert r.status_code == 200 and "attachment" in r.headers["content-disposition"]
+    data = r.json()
+    assert data["brands"] and data["brands"][0]["draft"] and "password_hash" not in r.text
+    assert client("Creator").get("/api/backup").status_code == 403

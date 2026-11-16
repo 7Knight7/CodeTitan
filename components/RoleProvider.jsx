@@ -16,7 +16,7 @@ const PAGES = {
   Reviewer: ["/overview", "/review", "/workspace", "/insights", "/analytics", "/drafts", "/account", "/team", "/extension"],
   "Marketing head": null,
 };
-const HOME = { Creator: "/", Reviewer: "/review", "Marketing head": "/" };
+const HOME = { Creator: "/", Reviewer: "/review", "Marketing head": "/overview" };
 
 export function canSee(role, path) {
   const allowed = PAGES[role];

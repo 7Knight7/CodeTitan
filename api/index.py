@@ -8,6 +8,7 @@ Security model (see SECURITY.md):
 """
 import base64
 import hmac
+import json
 import os
 import re
 import sys
@@ -19,16 +20,40 @@ from typing import Annotated, Literal, Optional
 
 sys.path.insert(0, os.path.dirname(__file__))
 
+
+def _load_local_env():
+    """Local development only: read KEY=VALUE lines from a .env file in the project folder (see .env.example).
+    Never used on Vercel (settings live there) or by the tests. Values already set in the shell win."""
+    if os.environ.get("VERCEL") or "pytest" in sys.modules:
+        return
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+    if not os.path.isfile(path):
+        return
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, value = line.split("=", 1)
+                os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
+_load_local_env()
+
 from fastapi import FastAPI, HTTPException, Request  # noqa: E402
 from fastapi.responses import JSONResponse, Response  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
 from _lbc import accounts, audit, auth, brands, pdf, brandfit, brandkit, engine, memory, platforms, tone  # noqa: E402
 from _lbc.brandapply import build_workspace  # noqa: E402
-from _lbc.store import (BRAND_TYPES, current_brand, get_store, request_stats, seed_items, set_brand,  # noqa: E402
+from _lbc.store import (BRAND_TYPES, MAIN, base_store, current_brand, get_store, scoped_type, request_stats, seed_items, set_brand,  # noqa: E402
                         start_request_cache, storage_mode)  # noqa: E402
 
 app = FastAPI(title="Live Brand Check API", docs_url=None, redoc_url=None, openapi_url=None)
+
+# The sign-in limit (5 tries per device per 10 minutes) is counted in the database, shared by every server copy.
+auth.use_shared(lambda key: base_store().get("ratelimit", key),
+                lambda key, v: base_store().put("ratelimit", {"id": key, "count": v[0], "start": v[1]}),
+                lambda: base_store().replace_types(["ratelimit"], []))
 
 SENIOR_ROLE = "Marketing head"
 ADMIN_ROLES = {SENIOR_ROLE}
@@ -58,7 +83,10 @@ async def guard(request: Request, call_next):
         if path not in PUBLIC:
             session = auth.read_token(request.cookies.get(auth.COOKIE, ""))
             if session:
-                get_store().prefetch(["user", "brand"])  # one database call for who is signed in and their brands
+                # One database call for who is signed in, the brand list and (most likely) the open brand's kit.
+                guess = request.cookies.get(BRAND_COOKIE, "")
+                guess = guess if re.fullmatch(r"[a-z0-9]{1,40}", guess) else MAIN
+                base_store().prefetch(["user", "brand"] + [scoped_type(t, guess) for t in ("meta", "guideline", "rule", "fact")])
             if session and accounts.mode() == "accounts":
                 session = account_session(session)
             if not session:
@@ -69,7 +97,7 @@ async def guard(request: Request, call_next):
             user = get_store().get("user", session["uid"]) if session.get("uid") else None
             request.state.brand = brands.pick(user, request.cookies.get(BRAND_COOKIE))
             set_brand(request.state.brand or NO_BRAND)
-            get_store().prefetch(["meta", "guideline", "rule", "fact"])  # the open brand's kit, in one call
+            get_store().prefetch(["meta", "guideline", "rule", "fact"])  # usually already loaded above
         response = await call_next(request)
     except RuntimeError as exc:  # missing server configuration, never a stack trace
         return JSONResponse({"detail": f"Server is not configured: {exc}."}, status_code=500)
@@ -478,8 +506,31 @@ def passed_checks(applied, findings):
     return [{"check": cid, "name": name, "location": loc} for cid, loc, name in applied if (cid, loc) not in fired]
 
 
+_GUIDE_CODE = re.compile(r"^Brand guideline (G\d+)\b")
+_FACT_CODE = re.compile(r"^Approved fact F\d+: ")
+
+
+def readable_sources(findings, guidelines):
+    """Rule and guideline codes (R1, G1, F1) are internal: show the guideline's own words instead."""
+    by_id = {g["id"]: g for g in guidelines}
+    for f in findings:
+        out = []
+        for src in f.get("sources") or []:
+            m = _GUIDE_CODE.match(src)
+            if m and m.group(1) in by_id:
+                g = by_id[m.group(1)]
+                text = g["text"] if len(g["text"]) <= 110 else g["text"][:107].rsplit(" ", 1)[0] + "…"
+                src = f"Brand guideline ({g.get('section') or 'Guideline'}): “{text}”"
+            elif m:
+                src = "Brand guideline"
+            out.append(_FACT_CODE.sub("Approved fact: ", src))
+        f["sources"] = list(dict.fromkeys(out))
+    return findings
+
+
 def annotate(findings, images, ws, post=None):
-    """Give every finding its validation layer, a confidence level and a readable location."""
+    """Give every finding its validation layer, a confidence level, a readable location and readable sources."""
+    readable_sources(findings, ws["guidelines"])
     regulatory = {r["id"] for r in ws["rules"] if r.get("source_type") == "regulatory"} | {engine.DISCLOSURE_RULE["id"]}
     ocr = {f"{i.kind} {n}": i.ocr_confidence for n, i in enumerate(images, 1)}
     kinds = {f"{i.kind} {n}": i.kind for n, i in enumerate(images, 1)}
@@ -978,6 +1029,7 @@ def get_draft(draft_id: str, request: Request):
     d = get_or_404(draft_id)
     events = sorted([e for e in get_store().list("event") if e.get("draft_id") == draft_id], key=lambda e: e["at"])
     s_ = me(request)
+    d["findings"] = readable_sources(d.get("findings") or [], workspace()["guidelines"])  # also posts checked before this change
     return d | {"events": events, "open_blockers": [b["name"] for b in open_blockers(d)]} | (review_info(s_, d) if s_.get("uid") else {})
 
 
@@ -2279,6 +2331,26 @@ def remove_brand(brand_id: Annotated[str, Field(max_length=40)], body: BrandRemo
     response = JSONResponse({"ok": True, "removed": name, "current": nxt})
     response.set_cookie(BRAND_COOKIE, nxt, max_age=60 * 60 * 24 * 365, httponly=True, samesite="lax", path="/")
     return response
+
+
+@app.get("/api/backup")
+def download_backup(request: Request):
+    """Marketing head: one file with every brand's kit, facts, rules, posts, reviews, memory and audit log, plus the
+    team list. Supabase's free plan has no daily backups, so keep a copy now and then.
+    Password hashes and invitation codes are left out."""
+    s_ = need(request, ADMIN_ROLES, "download backups")
+    from _lbc.store import ScopedStore
+    base = base_store()
+    out = {"app": "Live Brand Check", "made_at": now(), "made_by": s_["name"], "brands": []}
+    for rec in brands.records():
+        scoped = ScopedStore(base, rec["id"])
+        out["brands"].append({"id": rec["id"], "name": brands.label(rec), **{t: scoped.list(t) for t in BRAND_TYPES}})
+    safe = ("id", "name", "email", "role", "active", "brand_ids", "reviewer_ids", "created_at", "created_by", "last_login", "demo")
+    out["team"] = [{k: u.get(k) for k in safe} for u in base.list("user")]
+    log(None, s_["name"], s_["role"], "Downloaded a backup", f"{len(out['brands'])} brand(s)")
+    body = json.dumps(out, ensure_ascii=False, indent=1)
+    return Response(body, media_type="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="live-brand-check-backup-{date.today().isoformat()}.json"'})
 
 
 def check_brands(role, ids, default=True):

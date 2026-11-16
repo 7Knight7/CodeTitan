@@ -4,6 +4,7 @@ import { api, draftsChanged, when } from "@/lib/api";
 import BrandMemory from "@/components/BrandMemory";
 import { useTour } from "@/components/Tour";
 import Icon from "@/components/Icon";
+import SwitchTo from "@/components/SwitchTo";
 import { SeverityTag } from "@/components/IssueCard";
 import { Card, EmptyState, Notice, PageHeader } from "@/components/ui";
 
@@ -173,7 +174,7 @@ export default function WorkspacePage() {
             <button className="btn btn-ghost" disabled={!!busy} onClick={() => setDialog({ kind: "demo" })}><Icon name="refresh" className="h-4 w-4" />Restore the demo brand</button>
           </>
         )} />
-      {!canEdit && <Notice tone="info"><Icon name="lock" className="mr-1 inline h-3.5 w-3.5 align-[-2px]" /> Read only. Only the marketing head can upload, update or reset the brand kit; switch to Meera from the account menu.</Notice>}
+      {!canEdit && <Notice tone="info"><Icon name="lock" className="mr-1 inline h-3.5 w-3.5 align-[-2px]" /> Read only. Only the marketing head can upload, update or reset the brand kit. <SwitchTo role="Marketing head" href="/workspace">Open as Meera (marketing head)</SwitchTo></Notice>}
       {error && <Notice tone="error" role="alert">{error}</Notice>}
       {notice && <Notice tone="success" role="status">{notice}</Notice>}
 
@@ -494,6 +495,17 @@ export default function WorkspacePage() {
           <li className="flex gap-2"><Icon name="check" className="mt-0.5 h-4 w-4 shrink-0 text-teal-dark" />{ws.password_required ? "Sign-in uses a hashed password and a signed, HttpOnly session" : "Demo sign-in: no password, but every visitor gets a signed, HttpOnly session"}; roles are enforced by the server.</li>
         </ul>
       </Card>
+
+      {canEdit && (
+        <section className="panel flex flex-wrap items-center gap-4 p-5" data-testid="backup">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-teal-soft text-teal-dark"><Icon name="download" className="h-5 w-5" /></span>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-sm font-semibold">Keep a backup</h2>
+            <p className="mt-0.5 text-sm text-muted">One file with every brand&rsquo;s kit, facts, posts, reviews and history, plus the team list (no passwords). Download one now and then, and before big changes.</p>
+          </div>
+          <a href="/api/backup" download className="btn btn-quiet"><Icon name="download" className="h-4 w-4" />Download a backup</a>
+        </section>
+      )}
 
       {canEdit && brandList && (() => {
         const brand = brandList.brands.find((b) => b.current);

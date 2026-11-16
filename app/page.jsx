@@ -9,6 +9,7 @@ import ProofText, { keyOf } from "@/components/ProofText";
 import IssueCard from "@/components/IssueCard";
 import PostPreview from "@/components/PostPreview";
 import BrandFitBanner from "@/components/BrandFitBanner";
+import SwitchTo from "@/components/SwitchTo";
 import { MemoryTips } from "@/components/BrandMemory";
 import Icon from "@/components/Icon";
 import { Card, Notice, PageHeader, ScoreRing, StatusChip } from "@/components/ui";
@@ -293,8 +294,9 @@ function WritePage() {
           sub={<>Pick where the post goes, its format and whether it is paid. The composer shows only the fields that post needs, and checks it against {brandName}&rsquo;s brand kit, approved facts, Indian ad rules and the platform&rsquo;s own limits.</>}
           actions={<button className="btn btn-quiet" onClick={startNew}><Icon name="plus" className="h-4 w-4" />New post</button>} />
 
+        {!notCreator && <Steps result={result} draft={draft} blockers={openBlockerList.length} />}
         {noKit && <Notice tone="warning">No brand kit is live yet, so posts can&rsquo;t be checked. The marketing head must upload the brand kit in Brand guidelines first.</Notice>}
-        {notCreator && <Notice tone="info">You are signed in as {person.name}. You can try platforms, formats and the preview here, but only creators check and send posts. Switch to Priya from the account menu in the top right.</Notice>}
+        {notCreator && <Notice tone="info">You are signed in as {person.name}. You can try platforms, formats and the preview here, but only creators check and send posts. <SwitchTo role="Creator" href="/">Open as Priya (creator)</SwitchTo></Notice>}
         <ExamplePicker onRun={runExample} running={pending?.ex.id || (busy ? "busy" : null)}
           canRun={canAct} defaultOpen={!params.get("draft")} brand={ws?.meta?.name}
           blockedReason={noKit ? "No brand kit is live, so examples can't be checked. The marketing head can restore the demo brand in Brand guidelines." : "Only creators check posts. Switch to Priya to run an example."}
@@ -443,7 +445,9 @@ function WritePage() {
         {error && <Notice tone="error" role="alert">{error}</Notice>}
         {notice && (
           <div data-tour="sent"><Notice tone="success" role="status">
-            {notice} <Link href="/review" className="font-medium underline">Open the review queue</Link> and switch to a reviewer from the account menu to decide.
+            <span className="font-medium">{notice}</span> Next, the reviewer approves it or sends it back with a comment. You&rsquo;ll see their decision here,
+            in <Link href="/review" className="font-medium underline">Review &amp; approvals</Link> and in the bell at the top right.
+            <span className="mt-2 block"><SwitchTo role="Reviewer" href="/review">Try the reviewer side: open as Arjun</SwitchTo></span>
           </Notice></div>
         )}
 
@@ -842,4 +846,29 @@ function summarise(findings) {
   const c = { blocker: 0, warning: 0, suggestion: 0 };
   findings.forEach((f) => { c[f.severity] += 1; });
   return { ...c, sensitive: findings.some((f) => f.sensitive) };
+}
+
+
+// Where this post is in the process, so a first-time creator always knows the next step.
+const STEPS = ["Write a post or pick an example", "Press Check post", "Fix each critical issue (or keep it, with a reason)", "Send for review", "A reviewer approves it or sends it back"];
+function Steps({ result, draft, blockers }) {
+  const st = draft?.status;
+  const now = st === "approved" ? 5 : st === "in_review" ? 4 : !result ? 0 : blockers > 0 || st === "changes_requested" ? 2 : 3;
+  return (
+    <ol className="flex flex-wrap gap-x-1.5 gap-y-2 text-xs" aria-label="Steps" data-testid="steps">
+      {STEPS.map((t, i) => {
+        const done = i < now, current = i === now;
+        return (
+          <li key={t} aria-current={current ? "step" : undefined}
+            className={`items-center gap-1.5 rounded-full border px-2.5 py-1 ${current ? "flex border-teal bg-teal-soft font-medium text-ink" : `hidden sm:flex ${done ? "border-line text-approved" : "border-line text-muted"}`}`}>
+            <span className={`flex h-4 w-4 items-center justify-center rounded-full text-2xs font-semibold ${current ? "bg-teal text-ink" : done ? "bg-approved-soft" : "bg-canvas ring-1 ring-line"}`}>
+              {done ? <Icon name="check" className="h-2.5 w-2.5" strokeWidth={3} /> : i + 1}
+            </span>
+            <span><span className="sm:hidden">Step {i + 1} of {STEPS.length}: </span>{t}</span>
+          </li>
+        );
+      })}
+      {now === 5 && <li className="flex items-center gap-1.5 rounded-full bg-approved-soft px-2.5 py-1 font-medium text-approved"><Icon name="checkCircle" className="h-3.5 w-3.5" />Approved and ready to publish</li>}
+    </ol>
+  );
 }

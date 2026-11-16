@@ -26,9 +26,9 @@ import httpx
 
 from . import audit, seed
 
-TYPES = ("guideline", "rule", "fact", "draft", "event", "override", "meta", "memory", "user", "invite", "brand")
+TYPES = ("guideline", "rule", "fact", "draft", "event", "override", "meta", "memory", "user", "invite", "brand", "ratelimit")
 ACCOUNT_TYPES = ("user", "invite")  # personal accounts survive a demo reset
-GLOBAL_TYPES = ("user", "invite", "brand")  # shared by every brand; everything else belongs to one brand
+GLOBAL_TYPES = ("user", "invite", "brand", "ratelimit")  # shared by every brand; everything else belongs to one brand
 BRAND_TYPES = tuple(t for t in TYPES if t not in GLOBAL_TYPES)
 
 # Multi-brand: every brand's kit, facts, rules, posts, memory and audit log live in their own namespace.

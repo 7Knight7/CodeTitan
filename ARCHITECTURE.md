@@ -6,7 +6,7 @@
 
 **Non-functional:** no data or secret leakage, server-enforced roles, explainable and repeatable results, under 1 second per check, works on mobile, runs on free tiers (Vercel, Supabase).
 
-**Constraints:** two-person team, 1–3 days, judges must be able to use it unaided. For the judges' demo the password is off (sign-in is a role choice); `LBC_REQUIRE_PASSWORD=1` turns it back on.
+**Constraints:** two-person team, 1–3 days, judges must be able to use it unaided. The live site runs in personal-accounts mode with three demo accounts whose passwords are shown on the sign-in page; locally the default is a role choice with no password (`LBC_REQUIRE_PASSWORD=1` or `LBC_AUTH_MODE=accounts` change that). Everything must be free to run: no paid services and no AI keys.
 
 ## 2. High-level design
 
@@ -69,9 +69,17 @@ What the app learns as people work with a brand, stored separately (type `memory
 
 Memory never adds blockers. `GET /api/memory` shows it; only the marketing head can make it forget a learned topic (`POST /api/memory/forget`), and forgotten topics are not learned again.
 
+### Speed
+
+- **One database read per page for the basics.** Each API request starts a request cache; the middleware loads accounts, brands and the open brand's settings, guidelines, rules and facts in one Supabase call, and later reads in the same request come from memory. Most requests make 1–3 database calls (before: 7–11). Each response carries a `Server-Timing` header with the count.
+- **Lighter start.** The PDF library is loaded only when a brand PDF is uploaded, which cuts the Python function's cold start.
+- **Browser.** Identical requests made while a page loads share one call; fixed platform data is kept for 10 minutes. The OCR engine and its language data load only when an image is added.
+- **Region.** The API function runs in Mumbai (`bom1` in `vercel.json`); keeping Supabase in the same region (Mumbai, `ap-south-1`) avoids a long round trip on every call.
+- **Phones.** Every main page fits a 375 px screen without sideways scrolling; the five-step bar shows only the current step on small screens.
+
 ## 3. Data model
 
-One table, `lbc_items(id, type, data jsonb, created_at)`, with `type` one of: `guideline`, `rule`, `fact`, `meta` (workspace and the live brand kit), `draft` (with platform, format, context, fields, input errors, versions, findings, decisions, review, campaign links, `kit_id`, `kit_name`, `archived`), `override`, `event` (audit log), `memory` (brand memory per kit). A single document table keeps the demo simple; see section 6 for when to split it.
+One table, `lbc_items(id, type, data jsonb, created_at)`, with `type` one of: `guideline`, `rule`, `fact`, `meta` (workspace and the live brand kit), `draft` (with platform, format, context, fields, input errors, versions, findings, decisions, review, campaign links, `kit_id`, `kit_name`, `archived`), `override`, `event` (audit log), `memory` (brand memory per kit), plus the shared types `user`, `invite`, `brand` and `ratelimit` (sign-in attempts per hashed IP). Each brand's types are stored as `<brand>__<type>`. A single document table keeps the demo simple; see section 6 for when to split it.
 
 ## 4. Security design
 
@@ -111,7 +119,7 @@ Posts are locked while in review and after approval. Nobody can review a post th
 | Faking identity or role | Identity and role come only from the signed session |
 | Hiding blockers before submitting | Findings are computed by the server on every save; decisions reference server-side finding IDs |
 | Oversized or malformed input | Pydantic limits: post 5,000 characters, title 150, notes 500, banner text 3,000, palette 8 colours, date and number ranges |
-| Brute-force login | Rate limit, slow failure and a scrypt hash |
+| Brute-force login | Attempt limit counted in the database (so it holds across serverless instances; IPs stored only as hashes), per-account pause and block, slow failure and a scrypt hash |
 | Error details leaking internals | Generic JSON errors; API docs pages are switched off |
 | Post images leaking | OCR and image measurements run in the browser; only the read text, numbers and a 480 px preview for the reviewer are sent |
 | Open redirect after login | The `next` parameter must be a same-site path |
@@ -119,15 +127,19 @@ Posts are locked while in review and after approval. Nobody can review a post th
 | Learning changing the rules | Brand memory is stored apart from the brand kit, learns only from human decisions, and can only add topics and suggestions, never blockers |
 | Audit tampering | Users can't edit or delete events through the API. Every event stores its place (seq), the previous entry's SHA-256 fingerprint and its own, so any later change, removal or reordering is detected by `GET /api/audit/verify` and shown on History and in the PDF approval record. It detects tampering; someone with database access could rewrite the whole chain, which the head fingerprint printed in exported records exposes |
 | Stale approvals | Approvals store the facts they relied on with fingerprints; an edited, removed or expired fact sends the post back to review with the reason |
+| Malicious brand PDF | Size limit; PDFs with scripts, launch actions, attachments or embedded media are refused before reading |
+| Losing data | The marketing head can download a backup of the brand (no password hashes) from Brand guidelines |
+| Vulnerable packages | GitHub Actions run the tests and `pip-audit` on every push; Dependabot proposes updates; an hourly health check pings the live site |
 | Browser extension | Read-only on Instagram and Facebook: never edits the page or posts. Uses the user's own signed-in session (no keys stored); images are read on the device; it can only reach the Live Brand Check address and the Instagram/Facebook image CDNs |
 
 Also set on every page: `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy` (camera, microphone, location off), `Cross-Origin-Opener-Policy`, HSTS. API responses are `Cache-Control: no-store`.
 
 ## 5. Trade-offs
 
-- **No password for the demo, shared password otherwise, vs. personal accounts.** Role choice (or one shared password) lets judges in easily but can't tell people apart; anyone can choose any role. Personal accounts (Supabase Auth) are the production step.
+- **Demo accounts with public passwords.** They let judges in without help but anyone can use them; `LBC_DEMO_ACCOUNTS=0` turns them off for real use. Personal accounts are our own code (scrypt hashes, one-time invites) instead of a paid identity service; there is no two-factor sign-in (team decision).
 - **Rule-based brand fit and memory.** Repeatable and explainable, but the thresholds (colour share 0.25, logo match 0.6, 2 posts for a topic, 3 posts for house style) are untuned and their accuracy is not measured yet.
-- **Login rate limit per server instance.** Serverless instances don't share memory, so the limit is per instance. A Postgres-backed counter would make it global.
+- **Sign-in limit in the same table.** It works across instances but adds one database read per sign-in attempt.
+- **Short browser cache.** Identical page-load requests share one call and answers are reused for 2 seconds (fixed platform data for 10 minutes); any change clears it. A second browser tab can show data up to 2 seconds old.
 - **`'unsafe-inline'` scripts in CSP.** Next.js needs inline scripts without a nonce setup. Nonce-based CSP is a later hardening step.
 - **Single JSON table.** Fast to build and fine for demo volumes; it doesn't enforce relations or allow per-row access policies.
 - **Rules instead of AI, tone included.** Every post check is repeatable, explainable and free to run. The tone check uses the kit's tone guideline plus fixed signals (avoided words, capitals, exclamation marks, hype words); it can't judge meaning, so subtle off-tone writing isn't caught.
@@ -135,7 +147,7 @@ Also set on every page: `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `P
 
 ## 6. What to revisit as it grows
 
-- Personal accounts with Supabase Auth, organisation workspaces, and row-level security per organisation.
+- Two-factor sign-in, single sign-on for agencies, and row-level security per brand.
 - Normalised tables (drafts, versions, findings, decisions, events) with foreign keys and an append-only events table.
-- Global rate limiting, nonce-based CSP, and error monitoring.
+- Nonce-based CSP (needs the Next.js 15+ upgrade, which also clears the remaining npm audit warnings) and error monitoring.
 - Approvals reopen on fact edits immediately and on expiry when posts are next listed; a scheduled job would catch expiries with no one using the app.

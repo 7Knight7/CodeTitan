@@ -1,90 +1,191 @@
 # Live Brand Check
 
-Pre-publication brand and ad-claim checker for Indian marketing teams. The marketing head uploads the brand's guideline PDF once; creators then upload post images (and an optional caption) for any platform. The system checks each post against the brand kit, approved facts and Indian advertising rules, says plainly when a post doesn't belong to the brand at all, explains every issue with its source, suggests a fix, and a human reviewer makes the final decision. Every action is recorded, and the app learns from approved posts and reviews without ever changing the brand kit.
+Live Brand Check checks marketing posts before they are published. A marketing head uploads the brand's guideline PDF once. Creators then write posts (text, images, banners) for Instagram, LinkedIn, Facebook, WhatsApp or a website. Each post is checked against the brand kit, the brand's approved facts (fees, offers, results, with their dates) and Indian advertising rules. Every problem is explained with its source and a suggested fix. A human reviewer approves the post or sends it back, and everything is recorded.
 
-Team RaaGa: B.V. Sri Gautam and K. Sai Rajasree.
+It never publishes anything and never changes a post by itself: people decide. No AI service is used; all checks are fixed, explainable rules.
 
-## Try it (judges)
+Team RaaGa: B.V. Sri Gautam and K. Sai Rajasree. All demo data (Northstar Civils Academy, Sunrise Tutorials, students, fees) is fictional.
 
-**Live demo: https://live-brand-check.vercel.app**
+---
 
-No password and no setup: a sample brand kit (Northstar Civils Academy, fictional) is already loaded. Choose who you are on the sign-in page; you can switch person any time from the account menu in the top right.
+## Try it online
 
-**Guided demo.** After signing in you land on **Overview**, where six steps walk you through the product. Each step switches to the right person and opens the right screen:
+**https://live-brand-check.vercel.app**
 
-1. See what gets caught: a post full of risky claims, each issue underlined with its source.
-2. Fix a post in one click (**Accept fix** adds `#ad`) and **Send for review**.
-3. Approve it as **Arjun (brand reviewer)**.
-4. See a sensitive post (a festival greeting) that only **Meera (marketing head)** can approve.
-5. Spot repeated mistakes in **Insights** and **Analytics**.
-6. Import a brand kit from a PDF: **Read the sample PDF** in one click, review what was read, and activate it.
+Sign in with one of the demo accounts shown on the sign-in page (press **Use**, then **Sign in**):
 
-**Ready-made examples.** **Content checker** has nine one-click examples: claims that break ad rules, a fee and results not on record, a paid post without `#ad`, a banner with problems (its text is read in your browser), a post for another brand, a health claim, an offer that has ended, a festival greeting, and a post that is ready to send. Each one fills in a real post and runs the real check.
+| Person | Role | Email | Password |
+|---|---|---|---|
+| Priya | Creator: writes posts | priya@xyz.com | Priya@_1 |
+| Arjun | Reviewer: approves or sends back | arjun@xyz.com | Arjun@_1 |
+| Meera | Marketing head: brand kit, team, sensitive posts | meera@xyz.com | Meera@_1 |
 
-**Your own input.** Everything also works by hand: write any post, upload your own images, or import your own brand-kit PDF in **Brand guidelines**. **Start the demo over** (on Overview) restores the sample data.
+**Quickest tour:** on **Overview**, press **Start the guided demo**. A guide card follows you through six steps and switches person for you.
 
-Posts on sensitive topics can only be approved by Meera. Nobody can approve their own post. Demo data is fictional.
+**Or try the main journey yourself (about 3 minutes):**
 
-## How it works
+1. As **Priya**, open **Content checker** and pick **Claims that break ad rules** under *Try a ready-made example* (or write your own post and press **Check post**).
+2. Read the results on the right: each issue says what is wrong, why, its source and a fix. Press **Accept fix** on each critical issue, or **Keep original** with a reason.
+3. When the panel says **Ready for review**, press **Send for review**.
+4. Press **Try the reviewer side: open as Arjun** (or sign out and sign in as Arjun). On **Review & approvals** the post is already open: press **Approve**, or write a comment and press **Request changes**.
+5. Back as Priya, the decision appears in the bell at the top right and on **Review & approvals**.
 
-- **Brand kit from a PDF** (`api/_lbc/brandkit.py`, `brandapply.py`): a pattern reader (always on, no AI) reads colours, fonts, logo rule, required text, banned words, tone, positioning, sensitive topics, fees and offers with dates, and the brand's topics. No AI is used; every item keeps the page and words it came from. A person reviews everything before it goes live. Indian ad regulations always stay on.
-- **Multi-brand workspaces** (`api/_lbc/brands.py`, `components/BrandSwitcher.jsx`): an agency works on several brands from one login. Each brand has its own brand kit, approved facts, rules, posts, review queue, brand memory, insights, analytics and audit log (a namespace per brand in the store; the first brand uses the original names, so older data needs no migration). Marketing heads see every brand, switch from the Workspace box in the sidebar and can add a brand (it starts with the Indian ad rules only). Creators and reviewers work on one or more brands chosen by the marketing head (on invite, editable on Team) and only ever see those; the brand cookie is checked against membership on every request. Creators and reviewers get a read-only My team page (the marketing head, plus the creators a reviewer reviews or a creator's reviewers on the open brand). First run: existing data becomes the first brand and a second fictional demo brand is added (Northstar sample, or Sunrise Tutorials read from the sample PDF); demo Priya and Arjun work on both. "Start the demo over" restores only the sample brand.
-- **Brand kit lifecycle** (per brand): update the live kit (preview of changes, then apply; open posts are re-checked) or reset it for a different brand (earlier posts stay as read-only history, grouped by brand).
-- **Platform Intelligence Engine** (`api/_lbc/platforms.py`): per platform, format and context, the fields to show and the checks to run in five layers: platform limits (only documented ones, with source), Indian ad regulations, brand governance, approved facts, visuals.
-- **Rule engine and fact checks** (`api/_lbc/engine.py`): exact, explainable rules (CCPA coaching-sector guidelines 2024, ASCI Code, ASCI influencer disclosure, Drugs and Magic Remedies Act, plus the brand kit's words and names). Fees, offers and results are compared with approved facts and their validity dates.
-- **Image checks** (`lib/image.js`, in the browser): OCR with tesseract.js, text contrast against WCAG 4.5:1, palette and share of brand colours, logo match. Only the read text, measurements and a 480 px preview leave the browser.
-- **Brand fit** (`api/_lbc/brandfit.py`): combines brand name, logo, brand colours, other brands' names, the brand's topics and unapproved offers into one answer: fits, partly on brand, or "not a post for this brand" (a blocker). Every reason cites its source.
-- **Brand memory** (`api/_lbc/memory.py`): learns from approved posts (topics, house style), reviewer change requests, fixes creators accept (repeat mistakes) and overrides with reasons (accepted exceptions). It only adds topics and suggestions, never blockers, and never changes the brand kit. The marketing head can make it forget a topic.
-- **Workflow** (`api/index.py`): drafts with versions, creator decisions (keeping flagged text needs a reason), sending blocked while blockers are open, reviewer approve / request changes, sensitive posts need the marketing head, append-only audit events.
-- **Insights and Analytics**: repeat issues, rules overridden in at least 40% of posts, blockers, warnings, suggestions and checks passed, for the current brand kit or all history by brand.
-- **Tone and messaging check** (`api/_lbc/tone.py`, fixed rules, no AI, no key, free): runs when the brand kit has a tone or voice guideline and flags words that guideline says to avoid (quoted in it, such as 'hurry'), several words in capitals, too many exclamation marks, and hype or pressure words from a fixed list. Every finding quotes the post, cites the tone guideline and is a suggestion, never a blocker. It is repeatable and explainable but doesn't understand meaning, and its accuracy isn't measured yet. If the kit has no tone guideline, the composer says tone wasn't checked.
-- **Evidence-bound approvals** (`api/_lbc/audit.py`): an approval records the approved facts it relied on, with a fingerprint of each. If one of them is edited, removed or expires, the post goes back to review with the reason (shown on Review and History).
-- **Trusted history**: compare any two versions side by side (words added and removed, per field and per image text); every audit entry is fingerprinted with SHA-256 and linked to the one before, and the History page re-checks the whole chain (`GET /api/audit/verify`); approved posts have a downloadable PDF approval record (`GET /api/drafts/{id}/record.pdf`) with the approved text, evidence, decisions, the post's audit trail and the log's state at export.
-- **Guided demo journey** (`lib/journey.js`, `components/Journey.jsx`): "Start the guided demo" on Overview walks a judge through one story with a guide card on every page: Priya writes and sends a post, Arjun reviews it, Priya sees the result, Meera tours the features (the brand dropdown is highlighted), the Chrome extension is installed (ticked off when detected), and Priya tries it on real Instagram. Each step switches person and opens the sample brand automatically.
-- **Chrome extension** (`extension/`, see `extension/README.md`; install guide at /extension with a zip download, live detection and an Instagram try-out): checks captions, images and banners in the Instagram and Facebook composer as you write, using your Live Brand Check sign-in and the same server-side checks. It only reads the page and shows a panel; it never edits or posts.
+A step bar at the top of the Content checker always shows where the post is in this process.
 
-## Stack
+---
 
-Next.js 14 + Tailwind CSS (frontend), FastAPI on Python (API, deployed as a Vercel Python function), Supabase Postgres (storage), tesseract.js (in-browser OCR). Post checks use no AI; the only optional AI use is reading the brand guideline PDF.
+## Run it on your computer
 
-## Run locally
+### 1. What you need
+
+- **Git**
+- **Node.js 18.17 or newer** (20 recommended): https://nodejs.org
+- **Python 3.11 or newer**: https://www.python.org (on Windows, tick *Add Python to PATH* when installing)
+- **Google Chrome**, only for the browser extension
+
+Check them:
+
+```bash
+git --version
+node --version
+python --version
+```
+
+On Windows, if `python` isn't found, use `py` instead of `python` in the commands below.
+
+### 2. Get the code
+
+```bash
+git clone https://github.com/7Knight7/CodeTitan.git
+cd CodeTitan
+```
+
+### 3. Install
+
+Website packages:
 
 ```bash
 npm install
-pip install -r requirements.txt uvicorn
-npm run api      # FastAPI on :8000 (stores data in /tmp/lbc-data.json)
-npm run dev      # Next.js on :3000, proxies /api to :8000
+```
+
+API packages, plus the local server (`uvicorn`) and the test runner (`pytest`):
+
+```bash
+python -m pip install -r requirements.txt uvicorn pytest
+```
+
+(Optional: to keep these separate from your other Python projects, first create and activate a virtual environment: `python -m venv .venv`, then `.venv\Scripts\activate` on Windows or `source .venv/bin/activate` on macOS and Linux.)
+
+### 4. Choose how people sign in (optional)
+
+Without any settings, the app runs in **role-picking mode**: the sign-in page asks who you are, with no password. To use **personal accounts with passwords** (the demo accounts above, invitations, the Team page), copy the example settings file:
+
+macOS and Linux:
+
+```bash
+cp .env.example .env
+```
+
+Windows (PowerShell):
+
+```bash
+Copy-Item .env.example .env
+```
+
+`.env` is git-ignored. It also lets you change where local data is stored; see the comments inside.
+
+### 5. Start the app
+
+Use two terminals, both in the `CodeTitan` folder.
+
+Terminal 1, the API on port 8000:
+
+```bash
+npm run api
+```
+
+Terminal 2, the website on port 3000:
+
+```bash
+npm run dev
+```
+
+Open **http://localhost:3000** and sign in. The first start creates a sample brand (Northstar Civils Academy) and a second demo brand, with example posts, so everything can be tried straight away. Local data is kept in `/tmp/lbc-data.json` (on Windows `C:\tmp\lbc-data.json`); delete that file to start fresh, or press **Start the demo over** on Overview.
+
+### 6. Run the tests
+
+```bash
 python -m pytest -q tests
 ```
 
-Run only one `npm run dev` per folder; two dev servers sharing `.next` break the pages. To turn the password back on, set `LBC_REQUIRE_PASSWORD=1` and `LBC_PASSWORD_HASH="$(python api/_lbc/auth.py 'your-password')"`.
+All 44 tests should pass in about a minute.
 
-## Deploy (Vercel + Supabase)
+### Troubleshooting
 
-1. Create a Supabase project and run `supabase.sql` in its SQL editor.
-2. Import this repository into Vercel (framework: Next.js).
-3. Environment variables (Vercel → Project → Settings → Environment Variables). Never commit these:
-   - `LBC_SESSION_SECRET`: a long random string, for example the output of `python -c "import secrets; print(secrets.token_hex(32))"`.
-   - `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (Project settings → API). Required: without them each serverless instance keeps its own temporary data.
-   - Sign-in mode (pick one):
-     - nothing set: **demo mode**, people pick a role, no password (for the judges);
-     - `LBC_REQUIRE_PASSWORD=1` with `LBC_PASSWORD_HASH`: one shared password;
-     - `LBC_AUTH_MODE=accounts` with `LBC_SETUP_CODE` (any long random text): **personal accounts**. Open `/setup`, enter the setup code and create the first account (the marketing head), then invite the team from **Team**. Three demo accounts for the judges (meera@xyz.com, priya@xyz.com, arjun@xyz.com, passwords shown on the sign-in page) are created automatically in accounts mode; they get the 15-minute pause but are never blocked, and their password, role and access can't be changed. Turn them off for real use with `LBC_DEMO_ACCOUNTS=0`. Creators and reviewers are paired (several each way): inviting a creator means choosing their reviewer(s), inviting a reviewer means choosing the creator(s) they look after (optional only while nobody exists to choose), and pairings can be edited on Team. Only a creator's paired, active reviewers or the marketing head can approve or send back that creator's posts; posts whose creator has no active paired reviewer can be reviewed by any reviewer. Demo Priya is paired with demo Arjun. 3 wrong passwords pause that account's sign-in for 15 minutes; 2 more block it until a marketing head unblocks it on Team (or from the server: `python api/_lbc/accounts.py unblock <email>`). The count is stored on the account, so it holds across server instances.
-4. Deploy. The first request seeds the demo workspace.
+| Problem | What to do |
+|---|---|
+| `Port 8000 (or 3000) is already in use` | Another copy is still running. Close its terminal (or stop it with Ctrl+C) and start again. Run only one API and one `npm run dev` at a time. |
+| Pages show "404" or errors right after you change code | Stop `npm run dev` (Ctrl+C) and start it again. |
+| Sign-in page asks to pick a role, not for an email | You're in role-picking mode: do step 4, then restart `npm run api`. |
+| "Too many attempts" when signing in | 5 wrong tries from one device pause sign-in for 10 minutes; 3 wrong passwords on one account pause it for 15 minutes. Wait, or restart with a fresh data file. |
+| Reading text in an image takes a while the first time | The reader downloads its language data once (internet needed). Later images are faster. |
 
-## Security
+---
 
-See ARCHITECTURE.md: signed HttpOnly session cookie, server-enforced roles (no self-approval), optional hashed password, CSRF header, input limits, security headers, and a database reachable only from the server. The judges' demo runs without a password; turn it back on before any real use.
+## Chrome extension (checks posts inside Instagram and Facebook)
+
+Inside the app, open **Chrome extension** in the sidebar. It has a download button, step-by-step install instructions with copy buttons, a live "installed and connected" check, and a try-out on Instagram with a sample banner and caption. The extension only reads the page; it never edits or posts anything. Details: [extension/README.md](extension/README.md).
+
+---
+
+## Deploy your own copy (Vercel + Supabase, free plans)
+
+1. **Database:** create a project at https://supabase.com, open its SQL editor and run [`supabase.sql`](supabase.sql).
+2. **Hosting:** at https://vercel.com, import this GitHub repository (framework: Next.js). The Python API in `api/index.py` is deployed automatically next to the website.
+3. **Settings:** in Vercel, Project → Settings → Environments → Production → Environment Variables. Never put these in the code.
+
+   | Name | Value |
+   |---|---|
+   | `LBC_SESSION_SECRET` | Required. A long random value, e.g. the output of `python -c "import secrets; print(secrets.token_hex(32))"` |
+   | `SUPABASE_URL` | Required. From Supabase: Project settings → API |
+   | `SUPABASE_SERVICE_ROLE_KEY` | Required. From the same page. Keep it secret |
+   | `LBC_AUTH_MODE` | `accounts` for personal accounts with passwords (leave unset for role picking) |
+   | `LBC_SETUP_CODE` | Recommended with accounts: a private code that protects the first-time `/setup` page |
+   | `LBC_DEMO_ACCOUNTS` | `0` to switch the demo accounts off (do this for real use) |
+
+4. **Deploy.** Every push to `main` deploys again. Check `https://<your-site>/api/health`: it should say `"ok": true` and `"storage": "supabase"`.
+5. **With accounts and no demo accounts:** open `/setup`, enter the setup code and create the first marketing head, then invite the team from **Team**.
+
+GitHub runs the tests and security scans on every push ([.github/workflows](.github/workflows)) and checks the live site every hour. The deployment and security guide (limits, risks, and what to switch off after a demo) is kept with the team's documents.
+
+---
+
+## What's inside
+
+| Folder or file | What it is |
+|---|---|
+| `app/` | Website pages (Next.js 14): content checker, review, brand guidelines, insights, analytics, team, extension guide |
+| `components/`, `lib/` | Shared interface parts; `lib/image.js` reads text, contrast and colours in images in the browser |
+| `api/index.py` | The API (FastAPI): sign-in, posts, checks, reviews, brands, team |
+| `api/_lbc/engine.py` | Advertising rules and checks of fees, offers and results against approved facts |
+| `api/_lbc/brandkit.py`, `brandapply.py` | Reads a brand guideline PDF into a draft brand kit that a person confirms |
+| `api/_lbc/platforms.py` | Per-platform fields, documented limits and checks |
+| `api/_lbc/brandfit.py`, `memory.py`, `tone.py` | "Is this post for this brand?", what the brand learned from approved posts, and the tone check |
+| `api/_lbc/accounts.py`, `auth.py`, `brands.py` | Personal accounts, sessions and passwords, and multi-brand workspaces |
+| `api/_lbc/audit.py`, `pdf.py` | Hash-linked audit log, approvals tied to facts, and the PDF approval record |
+| `api/_lbc/store.py` | Storage: a local JSON file, or Supabase when its settings are present |
+| `extension/` | The Chrome extension |
+| `tests/test_app.py` | The automated tests |
+| `ARCHITECTURE.md`, `SUBMISSION.md`, `DEMO_SCRIPT.md` | Design and security notes, the competition submission, and the demo video script |
+
+**How a check works:** the browser reads the text in each image (it never uploads the full image); the API checks every text field and image against the active brand kit's rules and approved facts, the Indian advertising rules (CCPA coaching guidelines 2024, ASCI Code, ASCI influencer disclosure, Drugs and Magic Remedies Act), the platform's documented limits, brand fit and tone. Every finding is computed on the server and names its source; anything that can't be checked is shown as "Couldn't verify". More in [ARCHITECTURE.md](ARCHITECTURE.md).
+
+## Security in short
+
+Signed, HttpOnly session cookies; roles, creator–reviewer pairing and brand membership enforced on the server; nobody approves their own post; passwords stored only as scrypt hashes; 3 wrong passwords pause an account for 15 minutes and 5 block it; a sign-in limit per device shared across servers; a CSRF header on every change; size limits on every input; security headers on every page; the database reachable only from the server; a tamper-evident audit log; and a backup download for the marketing head. The demo accounts' passwords are public on purpose: switch them off with `LBC_DEMO_ACCOUNTS=0` for real use.
 
 ## Disclosures
 
-- Demo data (Northstar Civils Academy, Sunrise Tutorials, students, fees) is fictional.
 - Open-source libraries: Next.js, React, Tailwind CSS, FastAPI, pypdf, httpx, tesseract.js.
-- External services: Supabase (storage), jsDelivr/tessdata CDN (OCR engine and language data loaded by the browser). No AI or other paid service is called.
+- External services: Supabase (storage) and the jsDelivr and tessdata CDNs (the image-reading engine and its language data, loaded by the browser). No AI or paid service is called.
 - AI assistance in building the project: see SUBMISSION.md.
-
-## Future scope
-
-The three Round 3 improvements (tone check, Chrome extension, evidence-bound approvals and trusted history) are built; see How it works. Still to do: test the extension in real Chrome on live Instagram and Facebook composers, and publish it to the Chrome Web Store.
-
-Later: measured accuracy on a labelled test set, sign-in with real accounts, industry-specific regulation packs, Hindi and Telugu.

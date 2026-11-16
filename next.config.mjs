@@ -26,6 +26,9 @@ const securityHeaders = [
 
 const nextConfig = {
   poweredByHeader: false,
+  // The app never uses Next's image optimiser, so it is switched off: that closes the known
+  // Next.js 14 image-optimiser vulnerabilities until the planned upgrade to Next.js 15/16.
+  images: { unoptimized: true },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

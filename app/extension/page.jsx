@@ -77,7 +77,7 @@ export default function ExtensionPage() {
             <p><a href={ZIP} download className="btn btn-teal btn-sm" data-tour="extension-download"><Icon name="download" className="h-4 w-4" />Download live-brand-check-extension.zip</a> <span className="ml-1 text-xs">about 3 MB</span></p>
           </Step>
           <Step n={2} title="Unzip it">
-            <p>Open your Downloads folder, right-click the zip and choose <b>Extract All…</b> (Mac: double-click it). You get a folder called <b>live-brand-check-extension</b>.</p>
+            <p>Open your Downloads folder, right-click the zip and choose <b>Extract All…</b>, then <b>Extract</b> (Mac: double-click it). You get a folder called <b>live-brand-check-extension</b> (or <b>live-brand-check-extension (1)</b> if you downloaded it more than once). That folder is ready to use as it is.</p>
           </Step>
           <Step n={3} title="Open Chrome's extensions page">
             <p>Copy this address, paste it into Chrome&rsquo;s address bar and press Enter (Chrome doesn&rsquo;t let websites open it for you):</p>
@@ -87,7 +87,8 @@ export default function ExtensionPage() {
             <p>Use the <b>Developer mode</b> switch in the top-right corner of that page.</p>
           </Step>
           <Step n={5} title="Load the extension">
-            <p>Click <b>Load unpacked</b> (top left) and choose the <b>live-brand-check-extension</b> folder from step 2, the one that contains <span className="font-mono">manifest.json</span>. A card called <b>Live Brand Check</b> appears.</p>
+            <p>Click <b>Load unpacked</b> (top left), select the extracted <b>live-brand-check-extension</b> folder from step 2 and press <b>Select Folder</b>. A card called <b>Live Brand Check</b> appears.</p>
+            <p className="text-xs">If Chrome says <i>Manifest file is missing</i>, you picked the zip file or a different folder: pick the extracted folder, the one with <span className="font-mono">manifest.json</span> directly inside. Already have an older Live Brand Check card? Press <b>Remove</b> on it first.</p>
           </Step>
           <Step n={6} title="Pin it to the toolbar">
             <p>Click the puzzle-piece icon in Chrome&rsquo;s toolbar, then the pin next to <b>Live Brand Check</b>. A blue tick icon appears.</p>

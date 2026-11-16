@@ -8,6 +8,8 @@
   const LOGO = `<svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2.5 5 6.5v8.2c0 7 4.7 12.6 11 14.8 6.3-2.2 11-7.8 11-14.8V6.5z" fill="#1F3A68"/><circle cx="14.5" cy="14.5" r="5.2" fill="none" stroke="#F2A33A" stroke-width="2.6"/><path d="m18.4 18.4 4.2 4.2" stroke="#F2A33A" stroke-width="2.8" stroke-linecap="round"/></svg>`;
   const SEV = { blocker: ["Critical", "#b42318", "#fde7e5"], warning: ["Warning", "#a15c07", "#fdf1dc"], suggestion: ["Suggestion", "#3156b8", "#e6edfb"] };
   let root = null, timer = null, last = "", busy = false, open = false;
+  let closed = false; // × pressed: nothing is shown on this page until it is reloaded
+  let enabled = true; // the "Check posts on Instagram and Facebook" switch in the extension button
   let state = "idle", count = 0, blockers = 0, brand = "", lastHtml = "", warnedSig = "", bubbleTimer = null;
 
   // ---------- the panel (in a shadow root so the page's styles can't touch it) ----------
@@ -70,7 +72,8 @@
         ${LOGO}
         <div class="t"><b id="title">Live Brand Check is on</b><small><span class="live" id="live"></span><span id="sub">Open a new post to start</span></small></div>
         <button id="again" title="Check again">Check</button>
-        <button id="toggle" aria-expanded="true" title="Minimise">–</button>
+        <button id="toggle" aria-expanded="true" title="Minimise" aria-label="Minimise">–</button>
+        <button id="close" title="Close on this page (it comes back when you reload)" aria-label="Close Live Brand Check on this page">×</button>
       </div>
       <div class="body" id="body" aria-live="polite"><p class="muted">Start writing a post. Captions, images and banners in the composer are checked as you go.</p></div>
     </div>
@@ -107,6 +110,7 @@
     $("count").hidden = !n;
     $("count").textContent = n > 9 ? "9+" : String(n);
     $("badge").setAttribute("aria-label", `Open Live Brand Check: ${title}`);
+    if (closed || !enabled) { host.remove(); return; }
     if (!host.isConnected) document.documentElement.appendChild(host);
   }
   const show = (html, s) => { lastHtml = html; $("body").innerHTML = html; if (s) state = s; paint(); };
@@ -126,6 +130,13 @@
     bubbleTimer = setTimeout(() => { $("bubble").hidden = true; }, 6000);
   }
   $("toggle").onclick = (e) => { e.stopPropagation(); setOpen(false); };
+  $("close").onclick = (e) => { e.stopPropagation(); closed = true; clearTimeout(timer); host.remove(); };
+
+  // The switch in the extension button turns the panel off (or on) in every open tab straight away.
+  chrome.storage.sync.get({ enabled: true }).then((v) => { enabled = v.enabled !== false; paint(); }).catch(() => {});
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "sync" && changes.enabled) { enabled = changes.enabled.newValue !== false; last = ""; paint(); }
+  });
   $("badge").onclick = () => setOpen(true, true);
   $("again").onclick = (e) => { e.stopPropagation(); last = ""; run(); };
   paint();
@@ -173,6 +184,7 @@
   }
 
   function schedule(r) {
+    if (closed || !enabled) return;
     if (r !== root) { // a new composer: announce ourselves even if the panel was minimised
       root = r; last = ""; warnedSig = "";
       state = "idle"; show("<p class='muted'>Watching this post. Captions, images and banners are checked as you write.</p>");
@@ -212,7 +224,7 @@
     return /^(share|post|publish|post now)$/i.test((b.getAttribute("aria-label") || b.innerText || "").trim());
   };
   function warnBeforeShare(e) {
-    if (!blockers || !isShare(e.target) || warnedSig === last) return;
+    if (closed || !enabled || !blockers || !isShare(e.target) || warnedSig === last) return;
     warnedSig = last;
     $("body").innerHTML = `<div class="warn" role="alert">Before you post: ${plural(blockers, "critical issue")} ${blockers === 1 ? "hasn't" : "haven't"} been fixed.<span>Live Brand Check doesn't stop you posting. Fix them, or send the post for review instead.</span></div>` + lastHtml;
     setOpen(true, true);
@@ -246,6 +258,9 @@
     if (res.off) return show("<p class='muted'>Checking is paused. Turn it on from the extension button.</p>", "paused");
     if (res.error) {
       if (res.status === 401) return show(`<p><b>Sign in to check posts.</b></p><p class="muted">Open <a href="${esc(res.server)}/login" target="_blank" rel="noopener">Live Brand Check</a> in this browser, sign in, then press Check.</p>`, "attention");
+      if (!res.status && /fetch|network|load/i.test(res.error)) {
+        return show(`<p><b>Can't reach Live Brand Check.</b></p><p class="muted">The extension is set to <b>${esc(res.server)}</b>. Check that this address opens in a new tab (for a local copy, the app must be running), or change it from the extension button. Then press Check.</p><p class="muted">To hide this panel, press × above.</p>`, "attention");
+      }
       return show(`<p><b>Couldn't check this post.</b></p><p class="muted">${esc(res.error)}</p>`, "attention");
     }
     if (res.empty) return show("<p class='muted'>Nothing to check yet.</p>", "idle");

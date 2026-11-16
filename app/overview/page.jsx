@@ -88,7 +88,7 @@ export default function OverviewPage() {
           <p className="page-sub">Brand governance for {ws?.name || "your workspace"} at a glance.</p>
         </div>
         <div className="flex gap-2">
-          {person?.role !== "Reviewer" && <Link href="/" className="btn btn-primary"><Icon name="checker" className="h-4 w-4" />Check a post</Link>}
+          {person?.role === "Creator" && <Link href="/" className="btn btn-primary"><Icon name="checker" className="h-4 w-4" />Check a post</Link>}
           {person && person.role !== "Creator" && <Link href="/review" className="btn btn-quiet">Open review queue</Link>}
         </div>
       </div>

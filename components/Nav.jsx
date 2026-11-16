@@ -104,7 +104,11 @@ function AccountMenu({ person, setRole, signOut, trigger, placement = "down" }) 
 
 function SidebarBody({ path, person, workspace, collapsed, onToggle, onNavigate, setRole, signOut }) {
   // Team: the marketing head manages it; creators and reviewers see a read-only "My team" (personal accounts only).
-  const links = LINKS.filter((l) => person && canSee(person.role, l.match || l.href) && (!l.accounts || person.uid))
+  // The marketing head doesn't write posts, and reaches the few sensitive approvals from Overview ("Open review queue"),
+  // so Content checker and Review & approvals are left out of her sidebar.
+  const HEAD_HIDDEN = ["/", "/review"];
+  const links = LINKS.filter((l) => person && canSee(person.role, l.match || l.href) && (!l.accounts || person.uid)
+    && !(person.role === "Marketing head" && HEAD_HIDDEN.includes(l.href)))
     .map((l) => (l.href === "/team" && person.role !== "Marketing head" ? { ...l, label: "My team" } : l));
   return (
     <div className="flex h-full flex-col">
@@ -200,7 +204,7 @@ export default function Nav({ collapsed, onToggle, workspace }) {
 function TopBar({ path, person, setRole, signOut, workspace, onMenu, menuOpen }) {
   const crumbs = pageTitle(path);
   return (
-    <header className="sticky top-0 z-20 px-3 pt-3 sm:px-5 lg:px-6">
+    <header className="sticky top-0 z-40 px-3 pt-3 sm:px-5 lg:px-6">
       <div className="glass-strong flex h-14 items-center gap-2 rounded-full pl-4 pr-2 shadow sm:gap-3 sm:pl-5">
         <button onClick={onMenu} aria-label="Open menu" aria-expanded={menuOpen} data-tour="menu-button"
           className="-ml-1.5 rounded-full p-1.5 text-muted hover:bg-surface/70 hover:text-ink lg:hidden">

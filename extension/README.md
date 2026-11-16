@@ -20,10 +20,16 @@ The easiest way: open **Chrome extension** in the app's sidebar. It has a downlo
    npm run extension
    ```
 
-2. In Chrome, open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked** and choose the `extension/` folder.
+2. In Chrome, open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked** and choose the `extension/` folder (from the repository) or the folder you get by extracting the downloaded zip. Its files sit at the top of the zip, so the extracted folder has `manifest.json` directly inside.
 3. Click the extension button and set the Live Brand Check address. The default is `https://live-brand-check.vercel.app`; for local runs use the address your app opens on, such as `http://localhost:3001`.
 4. Sign in to Live Brand Check in the same Chrome profile.
 5. Open the post composer on instagram.com or facebook.com and start writing. The panel appears in the bottom right.
+
+## Hiding the panel
+
+- **On one page:** press **×** in the panel. It stays hidden on that page until you reload it. **–** only minimises it to a round badge.
+- **Everywhere:** click the extension button and untick **Check posts on Instagram and Facebook**. The panel disappears from every open tab straight away; tick it again to bring it back.
+- **For good:** remove the extension in `chrome://extensions`.
 
 ## Limits
 
