@@ -1,15 +1,40 @@
 # GitHub opens a pull request when a package the project uses has a security fix or update.
+# Small updates (minor and patch) come grouped in one pull request per week.
+# Major versions of the website framework (Next.js, React, Tailwind) are skipped: they change how the
+# code must be written (React 19 needs Next.js 15+, Tailwind 4 has a new setup), so the build fails
+# until the team does that upgrade on purpose (see the roadmap in SUBMISSION.md).
+# Security fixes are still proposed for every package.
 version: 2
 updates:
   - package-ecosystem: pip
     directory: "/"
     schedule:
       interval: weekly
+    groups:
+      python-small:
+        update-types: [minor, patch]
   - package-ecosystem: npm
     directory: "/"
     schedule:
       interval: weekly
+    groups:
+      npm-small:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: next
+        update-types: ["version-update:semver-major"]
+      - dependency-name: eslint-config-next
+        update-types: ["version-update:semver-major"]
+      - dependency-name: react
+        update-types: ["version-update:semver-major"]
+      - dependency-name: react-dom
+        update-types: ["version-update:semver-major"]
+      - dependency-name: tailwindcss
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
